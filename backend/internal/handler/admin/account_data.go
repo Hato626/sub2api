@@ -217,7 +217,7 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 }
 
 func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
-	skipDefaultGroupBind := true
+	skipDefaultGroupBind := false
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
@@ -402,6 +402,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		applyImportedOpenAIAccountDefaults(&item)
 
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,
@@ -455,6 +456,41 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	}
 
 	return result, nil
+}
+
+func applyImportedOpenAIAccountDefaults(item *DataAccount) {
+	if item == nil || strings.ToLower(strings.TrimSpace(item.Platform)) != service.PlatformOpenAI {
+		return
+	}
+	accountType := strings.ToLower(strings.TrimSpace(item.Type))
+	if accountType != service.AccountTypeOAuth && accountType != service.AccountTypeAPIKey {
+		return
+	}
+	item.Extra = applyOpenAIImportExtraDefaults(item.Extra, accountType)
+}
+
+func applyOpenAIImportExtraDefaults(extra map[string]any, accountType string) map[string]any {
+	accountType = strings.ToLower(strings.TrimSpace(accountType))
+	if accountType == service.AccountTypeOAuth {
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		extra["openai_oauth_responses_websockets_v2_mode"] = service.OpenAIWSIngressModeCtxPool
+		extra["openai_oauth_responses_websockets_v2_enabled"] = true
+		extra["codex_image_generation_bridge"] = true
+		delete(extra, "codex_image_generation_bridge_enabled")
+		return extra
+	}
+	if accountType == service.AccountTypeAPIKey {
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		extra["openai_apikey_responses_websockets_v2_mode"] = service.OpenAIWSIngressModeCtxPool
+		extra["openai_apikey_responses_websockets_v2_enabled"] = true
+		extra["codex_image_generation_bridge"] = true
+		delete(extra, "codex_image_generation_bridge_enabled")
+	}
+	return extra
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {

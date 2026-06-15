@@ -217,6 +217,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		}
 		credentials := mergeCodexImportMap(item.Credentials, credentialExtras)
 		extra := mergeCodexImportMap(req.Extra, item.Extra)
+		extra = applyOpenAIImportExtraDefaults(extra, service.AccountTypeOAuth)
 		for _, warning := range item.WarningTexts {
 			result.Warnings = append(result.Warnings, CodexSessionImportMessage{
 				Index:   entry.Index,

@@ -217,7 +217,7 @@ func TestExportDataSelectedIDsOverrideFilters(t *testing.T) {
 	require.Equal(t, 0, adminSvc.lastListAccounts.calls)
 }
 
-func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
+func TestImportDataReusesProxyAndAppliesOpenAIDefaults(t *testing.T) {
 	router, adminSvc := setupAccountDataRouter()
 
 	adminSvc.proxies = []service.Proxy{
@@ -261,7 +261,6 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 				},
 			},
 		},
-		"skip_default_group_bind": true,
 	}
 
 	body, _ := json.Marshal(dataPayload)
@@ -272,6 +271,43 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.Len(t, adminSvc.createdProxies, 0)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.False(t, created.SkipDefaultGroupBind)
+	require.Equal(t, service.OpenAIWSIngressModeCtxPool, created.Extra["openai_oauth_responses_websockets_v2_mode"])
+	require.Equal(t, true, created.Extra["openai_oauth_responses_websockets_v2_enabled"])
+	require.Equal(t, true, created.Extra["codex_image_generation_bridge"])
+}
+
+func TestImportDataCanExplicitlySkipDefaultGroup(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformAnthropic,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"skip_default_group_bind": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }

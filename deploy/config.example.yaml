@@ -208,11 +208,12 @@ gateway:
   # Enable Codex image-generation bridge injection for /openai/v1/responses.
   # 是否为 Codex /responses 请求自动注入 image_generation 工具与桥接指令。
   #
-  # Default false keeps text-only Codex requests text-only. Explicit client-provided
+  # Default true injects the image_generation tool for Codex requests when the
+  # selected group allows image generation. Explicit client-provided
   # image_generation tools are still forwarded when the group allows image generation.
-  # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
+  # 默认 true：在分组允许图片生成时为 Codex 请求注入 image_generation tool；客户端显式提供时，
   # 仍会在分组允许图片生成的情况下正常转发。
-  codex_image_generation_bridge_enabled: false
+  codex_image_generation_bridge_enabled: true
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #
@@ -244,8 +245,8 @@ gateway:
   openai_passthrough_allow_timeout_headers: false
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
-    # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
-    mode_router_v2_enabled: false
+    # 新版 WS mode 路由（默认开启）。开启后未显式设置账号模式时使用 ingress_mode_default。
+    mode_router_v2_enabled: true
     # ingress 默认模式：off|ctx_pool|passthrough（仅 mode_router_v2_enabled=true 生效）
     # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
     ingress_mode_default: ctx_pool

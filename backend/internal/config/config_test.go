@@ -113,6 +113,9 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if !cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled {
 		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeEnabled = false, want true")
 	}
+	if !cfg.Gateway.CodexImageGenerationBridgeEnabled {
+		t.Fatalf("Gateway.CodexImageGenerationBridgeEnabled = false, want true")
+	}
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs != 15000 {
 		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeTTFTMs = %d, want 15000", cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs)
 	}
@@ -173,8 +176,8 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.StoreDisabledConnMode != "strict" {
 		t.Fatalf("Gateway.OpenAIWS.StoreDisabledConnMode = %q, want %q", cfg.Gateway.OpenAIWS.StoreDisabledConnMode, "strict")
 	}
-	if cfg.Gateway.OpenAIWS.ModeRouterV2Enabled {
-		t.Fatalf("Gateway.OpenAIWS.ModeRouterV2Enabled = true, want false")
+	if !cfg.Gateway.OpenAIWS.ModeRouterV2Enabled {
+		t.Fatalf("Gateway.OpenAIWS.ModeRouterV2Enabled = false, want true")
 	}
 	if cfg.Gateway.OpenAIWS.IngressModeDefault != "ctx_pool" {
 		t.Fatalf("Gateway.OpenAIWS.IngressModeDefault = %q, want %q", cfg.Gateway.OpenAIWS.IngressModeDefault, "ctx_pool")
