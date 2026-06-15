@@ -26,7 +26,8 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Copy frontend source and build
+# Copy frontend source plus legal docs imported by Vite raw loaders
+COPY docs/legal/admin-compliance.*.md /app/docs/legal/
 COPY frontend/ ./
 RUN pnpm run build
 
