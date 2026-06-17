@@ -308,3 +308,73 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
+
+// QueryReferralStatus returns Codex earned-reset / invitation status for an OpenAI account.
+// GET /api/v1/admin/openai/accounts/:id/referral-status
+func (h *OpenAIOAuthHandler) QueryReferralStatus(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	status, err := h.quotaService.QueryReferralStatus(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+// OpenAIReferralInviteRequest sends either explicit invite emails or a single
+// target account ID from the account pool. When target_account_id is present,
+// the backend resolves the account email and attempts best-effort redemption.
+type OpenAIReferralInviteRequest struct {
+	Emails          []string `json:"emails"`
+	TargetAccountID *int64   `json:"target_account_id"`
+	Cookie          string   `json:"cookie"`
+	CookieUserAgent string   `json:"cookie_user_agent"`
+	AutoRedeem      *bool    `json:"auto_redeem"`
+}
+
+// SendReferralInvite issues a Codex earned-reset invitation.
+// POST /api/v1/admin/openai/accounts/:id/referral-invite
+func (h *OpenAIOAuthHandler) SendReferralInvite(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+
+	var req OpenAIReferralInviteRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !strings.Contains(strings.ToLower(err.Error()), "eof") {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	autoRedeem := true
+	if req.AutoRedeem != nil {
+		autoRedeem = *req.AutoRedeem
+	}
+
+	result, err := h.quotaService.SendReferralInvite(c.Request.Context(), accountID, service.OpenAIReferralInviteInput{
+		Emails:          req.Emails,
+		TargetAccountID: req.TargetAccountID,
+		Cookie:          strings.TrimSpace(req.Cookie),
+		CookieUserAgent: strings.TrimSpace(req.CookieUserAgent),
+		AutoRedeem:      autoRedeem,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}

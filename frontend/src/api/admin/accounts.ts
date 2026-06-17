@@ -740,6 +740,7 @@ export interface OpenAIQuotaUsage {
   rate_limit?: OpenAIRateLimit | null
   additional_rate_limits?: OpenAIAdditionalRateLimit[]
   rate_limit_reset_credits?: OpenAIRateLimitResetCredits | null
+  referral_beacon?: Record<string, unknown> | null
   fetched_at: number
 }
 
@@ -759,6 +760,71 @@ export interface OpenAIQuotaResetResult {
   windows_reset: number
 }
 
+export interface OpenAIRateLimitCreditsList {
+  credits?: OpenAIQuotaResetCredit[]
+  available_count: number
+  raw?: unknown
+  fetched_at: number
+}
+
+export interface OpenAIReferralEligibility {
+  checked: boolean
+  http_status?: number
+  should_show?: boolean | null
+  grant_action?: string
+  grant_amount?: number | null
+  remaining_referrals?: number | null
+  ineligible_reason?: string
+  ineligible_reason_code?: string
+  error?: string
+}
+
+export interface OpenAIReferralStatus {
+  usage?: OpenAIQuotaUsage | null
+  credits?: OpenAIRateLimitCreditsList | null
+  eligibility?: OpenAIReferralEligibility | null
+  referral_beacon?: Record<string, unknown> | null
+  remaining_invites?: number | null
+  fetched_at: number
+}
+
+export interface OpenAIReferralInviteLink {
+  referral_id?: string
+  email?: string
+  invite_url?: string
+}
+
+export interface OpenAIReferralAutoRedeemResult {
+  attempted: boolean
+  success: boolean
+  verified: boolean
+  status_code?: number
+  url?: string
+  reason?: string
+  response_body?: string
+}
+
+export interface OpenAIReferralInviteResult {
+  ok: boolean
+  status_code: number
+  request_id?: string
+  referral_key: string
+  emails: string[]
+  target_account_id?: number | null
+  invites?: OpenAIReferralInviteLink[]
+  upstream?: Record<string, unknown>
+  upstream_raw?: string
+  auto_redeem?: OpenAIReferralAutoRedeemResult | null
+}
+
+export interface OpenAIReferralInviteRequest {
+  emails?: string[]
+  target_account_id?: number | null
+  cookie?: string
+  cookie_user_agent?: string
+  auto_redeem?: boolean
+}
+
 /**
  * Query OpenAI/Codex rate-limit usage for an OAuth account.
  */
@@ -772,6 +838,29 @@ export async function queryOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
  */
 export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResult> {
   const { data } = await apiClient.post<OpenAIQuotaResetResult>(`/admin/openai/accounts/${id}/reset-quota`)
+  return data
+}
+
+/**
+ * Query Codex earned-reset referral status for an OAuth account.
+ */
+export async function queryOpenAIReferralStatus(id: number): Promise<OpenAIReferralStatus> {
+  const { data } = await apiClient.get<OpenAIReferralStatus>(`/admin/openai/accounts/${id}/referral-status`)
+  return data
+}
+
+/**
+ * Send Codex earned-reset referral invite. When target_account_id is supplied,
+ * backend resolves the target email and attempts best-effort redemption.
+ */
+export async function sendOpenAIReferralInvite(
+  id: number,
+  payload: OpenAIReferralInviteRequest
+): Promise<OpenAIReferralInviteResult> {
+  const { data } = await apiClient.post<OpenAIReferralInviteResult>(
+    `/admin/openai/accounts/${id}/referral-invite`,
+    payload
+  )
   return data
 }
 
@@ -818,7 +907,9 @@ export const accountsAPI = {
   setPrivacy,
   revertProxyFallback,
   queryOpenAIQuota,
-  resetOpenAIQuota
+  resetOpenAIQuota,
+  queryOpenAIReferralStatus,
+  sendOpenAIReferralInvite
 }
 
 export default accountsAPI

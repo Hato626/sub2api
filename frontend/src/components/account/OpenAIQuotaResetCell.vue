@@ -61,6 +61,30 @@
         </svg>
         {{ t('admin.accounts.openaiQuotaReset.reset') }}
       </button>
+
+      <button
+        type="button"
+        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
+        :disabled="loading || resetting || inviting"
+        :title="inviteButtonTitle"
+        @click="openInviteDialog"
+      >
+        <svg
+          class="h-2.5 w-2.5"
+          :class="{ 'animate-pulse': inviting }"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M18 14v4m0 0v4m0-4h4m-4 0h-4M15 8a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0"
+          />
+        </svg>
+        {{ t('admin.accounts.openaiQuotaReset.invite') }}<span v-if="remainingInvitesLabel"> {{ remainingInvitesLabel }}</span>
+      </button>
     </div>
 
     <!-- Error / success feedback -->
@@ -77,6 +101,140 @@
     >
       {{ resetMessage }}
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="inviteDialogOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+        @click.self="closeInviteDialog"
+      >
+        <div class="w-full max-w-md rounded-lg bg-white p-4 shadow-xl dark:bg-dark-800">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {{ t('admin.accounts.openaiQuotaReset.inviteTitle') }}
+            </h3>
+            <button
+              type="button"
+              class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              :title="t('common.close')"
+              @click="closeInviteDialog"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="mb-3 grid grid-cols-2 rounded-md bg-gray-100 p-0.5 text-xs dark:bg-dark-700">
+            <button
+              type="button"
+              class="rounded px-2 py-1.5 font-medium transition-colors"
+              :class="inviteMode === 'pool' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-gray-100' : 'text-gray-500 dark:text-gray-300'"
+              @click="inviteMode = 'pool'"
+            >
+              {{ t('admin.accounts.openaiQuotaReset.inviteModePool') }}
+            </button>
+            <button
+              type="button"
+              class="rounded px-2 py-1.5 font-medium transition-colors"
+              :class="inviteMode === 'email' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-gray-100' : 'text-gray-500 dark:text-gray-300'"
+              @click="inviteMode = 'email'"
+            >
+              {{ t('admin.accounts.openaiQuotaReset.inviteModeEmail') }}
+            </button>
+          </div>
+
+          <div v-if="inviteMode === 'pool'" class="space-y-2">
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.openaiQuotaReset.targetAccount') }}
+            </label>
+            <select
+              v-model.number="selectedTargetAccountID"
+              class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-100"
+              :disabled="loadingAccounts || inviting"
+            >
+              <option :value="0">
+                {{ loadingAccounts ? t('common.loading') : t('admin.accounts.openaiQuotaReset.selectTarget') }}
+              </option>
+              <option
+                v-for="item in targetAccounts"
+                :key="item.id"
+                :value="item.id"
+              >
+                {{ accountOptionLabel(item) }}
+              </option>
+            </select>
+          </div>
+
+          <div v-else class="space-y-2">
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.openaiQuotaReset.email') }}
+            </label>
+            <input
+              v-model.trim="inviteEmail"
+              type="email"
+              class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-100"
+              :placeholder="t('admin.accounts.openaiQuotaReset.emailPlaceholder')"
+              :disabled="inviting"
+            />
+          </div>
+
+          <div
+            v-if="inviteError"
+            class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-900/20 dark:text-red-300"
+          >
+            {{ inviteError }}
+          </div>
+
+          <div
+            v-if="inviteResult"
+            class="mt-3 space-y-2 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200"
+          >
+            <div>{{ inviteResultSummary }}</div>
+            <a
+              v-if="firstInviteURL"
+              :href="firstInviteURL"
+              target="_blank"
+              rel="noreferrer"
+              class="block truncate underline"
+            >
+              {{ firstInviteURL }}
+            </a>
+            <div v-if="autoRedeemSummary" class="text-emerald-700 dark:text-emerald-300">
+              {{ autoRedeemSummary }}
+            </div>
+          </div>
+
+          <div class="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              @click="closeInviteDialog"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="inviting || !canSubmitInvite"
+              @click="handleSendInvite"
+            >
+              <svg
+                class="h-3.5 w-3.5"
+                :class="{ 'animate-spin': inviting }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M22 2L11 13" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+              {{ t('admin.accounts.openaiQuotaReset.sendInvite') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -85,10 +243,15 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import {
+  list as listAccounts,
   queryOpenAIQuota,
+  queryOpenAIReferralStatus,
   resetOpenAIQuota,
+  sendOpenAIReferralInvite,
   type OpenAIQuotaUsage,
-  type OpenAIQuotaResetResult
+  type OpenAIQuotaResetResult,
+  type OpenAIReferralInviteResult,
+  type OpenAIReferralStatus
 } from '@/api/admin/accounts'
 
 const props = defineProps<{
@@ -102,12 +265,26 @@ const visible = computed(() => props.account.platform === 'openai' && props.acco
 
 const loading = ref(false)
 const resetting = ref(false)
+const inviting = ref(false)
+const loadingAccounts = ref(false)
 const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
+const referralStatus = ref<OpenAIReferralStatus | null>(null)
 const resetMessage = ref<string | null>(null)
+const inviteDialogOpen = ref(false)
+const inviteMode = ref<'pool' | 'email'>('pool')
+const targetAccounts = ref<Account[]>([])
+const selectedTargetAccountID = ref<number>(0)
+const inviteEmail = ref('')
+const inviteError = ref<string | null>(null)
+const inviteResult = ref<OpenAIReferralInviteResult | null>(null)
 
-const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
+const availableResetCount = computed(() => referralStatus.value?.credits?.available_count ?? data.value?.rate_limit_reset_credits?.available_count ?? 0)
 const canReset = computed(() => availableResetCount.value > 0)
+const remainingInvitesLabel = computed(() => {
+  const count = referralStatus.value?.remaining_invites
+  return typeof count === 'number' ? String(count) : ''
+})
 
 const resetButtonTitle = computed(() => {
   if (!data.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNeedQuery')
@@ -120,6 +297,41 @@ const resetButtonTitle = computed(() => {
 const countButtonTitle = computed(() => {
   if (!data.value) return t('admin.accounts.openaiQuotaReset.countTooltipLoad')
   return t('admin.accounts.openaiQuotaReset.countTooltipRefresh')
+})
+
+const inviteButtonTitle = computed(() => {
+  if (!referralStatus.value) return t('admin.accounts.openaiQuotaReset.inviteTooltipLoad')
+  if (typeof referralStatus.value.remaining_invites === 'number') {
+    return t('admin.accounts.openaiQuotaReset.inviteTooltipWithCount', {
+      count: referralStatus.value.remaining_invites
+    })
+  }
+  return t('admin.accounts.openaiQuotaReset.inviteTooltipReady')
+})
+
+const canSubmitInvite = computed(() => {
+  if (inviteMode.value === 'pool') return selectedTargetAccountID.value > 0
+  return inviteEmail.value.trim().length > 0
+})
+
+const firstInviteURL = computed(() => {
+  const invite = inviteResult.value?.invites?.find((item) => item.invite_url)
+  return invite?.invite_url || ''
+})
+
+const inviteResultSummary = computed(() => {
+  if (!inviteResult.value) return ''
+  const emails = inviteResult.value.emails?.join(', ') || ''
+  return t('admin.accounts.openaiQuotaReset.inviteSuccess', { emails })
+})
+
+const autoRedeemSummary = computed(() => {
+  const auto = inviteResult.value?.auto_redeem
+  if (!auto) return ''
+  if (!auto.attempted) return t('admin.accounts.openaiQuotaReset.autoRedeemSkipped', { reason: auto.reason || '-' })
+  if (auto.verified) return t('admin.accounts.openaiQuotaReset.autoRedeemVerified')
+  if (auto.success) return t('admin.accounts.openaiQuotaReset.autoRedeemAttempted', { reason: auto.reason || '-' })
+  return t('admin.accounts.openaiQuotaReset.autoRedeemFailed', { reason: auto.reason || '-' })
 })
 
 const truncatedError = computed(() => {
@@ -153,7 +365,12 @@ const handleQuery = async () => {
   error.value = null
   resetMessage.value = null
   try {
-    data.value = await queryOpenAIQuota(props.account.id)
+    const [usage, status] = await Promise.all([
+      queryOpenAIQuota(props.account.id),
+      queryOpenAIReferralStatus(props.account.id).catch(() => null)
+    ])
+    data.value = usage
+    referralStatus.value = status
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {
@@ -191,10 +408,72 @@ watch(
   () => {
     // Account row may be reused across paginated lists; reset local state.
     data.value = null
+    referralStatus.value = null
     error.value = null
     resetMessage.value = null
+    inviteDialogOpen.value = false
+    inviteMode.value = 'pool'
+    inviteError.value = null
+    inviteResult.value = null
+    selectedTargetAccountID.value = 0
+    inviteEmail.value = ''
     loading.value = false
     resetting.value = false
+    inviting.value = false
   }
 )
+
+const loadTargetAccounts = async () => {
+  if (loadingAccounts.value || targetAccounts.value.length > 0) return
+  loadingAccounts.value = true
+  try {
+    const res = await listAccounts(1, 1000, {
+      platform: 'openai',
+      type: 'oauth',
+      sort_by: 'name',
+      sort_order: 'asc'
+    })
+    targetAccounts.value = res.items.filter((item) => item.id !== props.account.id)
+  } catch (e) {
+    inviteError.value = extractErrorMessage(e)
+  } finally {
+    loadingAccounts.value = false
+  }
+}
+
+const openInviteDialog = async () => {
+  inviteDialogOpen.value = true
+  inviteError.value = null
+  inviteResult.value = null
+  await loadTargetAccounts()
+}
+
+const closeInviteDialog = () => {
+  if (inviting.value) return
+  inviteDialogOpen.value = false
+}
+
+const accountOptionLabel = (account: Account): string => {
+  const email = typeof account.credentials?.email === 'string' ? account.credentials.email : ''
+  return email ? `${account.name} (${email})` : `${account.name} #${account.id}`
+}
+
+const handleSendInvite = async () => {
+  if (inviting.value || !canSubmitInvite.value) return
+  inviting.value = true
+  inviteError.value = null
+  inviteResult.value = null
+  try {
+    const payload =
+      inviteMode.value === 'pool'
+        ? { target_account_id: selectedTargetAccountID.value, auto_redeem: true }
+        : { emails: [inviteEmail.value], auto_redeem: false }
+    inviteResult.value = await sendOpenAIReferralInvite(props.account.id, payload)
+    referralStatus.value = await queryOpenAIReferralStatus(props.account.id).catch(() => referralStatus.value)
+  } catch (e) {
+    inviteError.value = extractErrorMessage(e)
+  } finally {
+    inviting.value = false
+  }
+}
 </script>

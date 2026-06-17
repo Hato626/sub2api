@@ -364,6 +364,8 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
 		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
+		openai.GET("/accounts/:id/referral-status", h.Admin.OpenAIOAuth.QueryReferralStatus)
+		openai.POST("/accounts/:id/referral-invite", h.Admin.OpenAIOAuth.SendReferralInvite)
 	}
 }
 
