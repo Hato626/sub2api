@@ -108,7 +108,11 @@
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
         @click.self="closeInviteDialog"
       >
-        <div class="w-full max-w-md rounded-lg bg-white p-4 shadow-xl dark:bg-dark-800">
+        <div
+          class="w-full max-w-md rounded-lg bg-white p-4 shadow-xl dark:bg-dark-800"
+          @click.stop
+          @mousedown.stop
+        >
           <div class="mb-3 flex items-center justify-between gap-3">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {{ t('admin.accounts.openaiQuotaReset.inviteTitle') }}
@@ -130,7 +134,7 @@
               type="button"
               class="rounded px-2 py-1.5 font-medium transition-colors"
               :class="inviteMode === 'pool' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-gray-100' : 'text-gray-500 dark:text-gray-300'"
-              @click="inviteMode = 'pool'"
+              @click.stop="setInviteMode('pool')"
             >
               {{ t('admin.accounts.openaiQuotaReset.inviteModePool') }}
             </button>
@@ -138,7 +142,7 @@
               type="button"
               class="rounded px-2 py-1.5 font-medium transition-colors"
               :class="inviteMode === 'email' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-gray-100' : 'text-gray-500 dark:text-gray-300'"
-              @click="inviteMode = 'email'"
+              @click.stop="setInviteMode('email')"
             >
               {{ t('admin.accounts.openaiQuotaReset.inviteModeEmail') }}
             </button>
@@ -451,6 +455,12 @@ const openInviteDialog = async () => {
 const closeInviteDialog = () => {
   if (inviting.value) return
   inviteDialogOpen.value = false
+}
+
+const setInviteMode = (mode: 'pool' | 'email') => {
+  inviteMode.value = mode
+  inviteError.value = null
+  inviteResult.value = null
 }
 
 const accountOptionLabel = (account: Account): string => {
