@@ -16,7 +16,34 @@
         {{ t('admin.accounts.dataImportWarning') }}
       </div>
 
-      <div>
+      <div class="grid grid-cols-2 rounded-lg bg-gray-100 p-1 text-sm dark:bg-dark-800">
+        <button
+          type="button"
+          class="rounded-md px-3 py-2 font-medium transition-colors"
+          :class="
+            importSource === 'file'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-dark-300 dark:hover:text-dark-100'
+          "
+          @click="setImportSource('file')"
+        >
+          {{ t('admin.accounts.dataImportSourceFile') }}
+        </button>
+        <button
+          type="button"
+          class="rounded-md px-3 py-2 font-medium transition-colors"
+          :class="
+            importSource === 'text'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-dark-300 dark:hover:text-dark-100'
+          "
+          @click="setImportSource('text')"
+        >
+          {{ t('admin.accounts.dataImportSourceText') }}
+        </button>
+      </div>
+
+      <div v-if="importSource === 'file'">
         <label class="input-label">{{ t('admin.accounts.dataImportFile') }}</label>
         <div
           class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800"
@@ -38,6 +65,30 @@
           accept="application/json,.json"
           @change="handleFileChange"
         />
+      </div>
+
+      <div v-else class="space-y-2">
+        <div class="flex items-center justify-between gap-3">
+          <label class="input-label">{{ t('admin.accounts.dataImportText') }}</label>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="importing"
+            @click="pasteFromClipboard"
+          >
+            {{ t('admin.accounts.dataImportPasteFromClipboard') }}
+          </button>
+        </div>
+        <textarea
+          v-model.trim="rawText"
+          class="input-field min-h-48 font-mono text-xs"
+          :placeholder="t('admin.accounts.dataImportTextPlaceholder')"
+          :disabled="importing"
+          spellcheck="false"
+        />
+        <div class="text-xs text-gray-500 dark:text-dark-400">
+          {{ t('admin.accounts.dataImportTextHint') }}
+        </div>
       </div>
 
       <div
@@ -109,6 +160,8 @@ const appStore = useAppStore()
 
 const importing = ref(false)
 const file = ref<File | null>(null)
+const importSource = ref<'file' | 'text'>('file')
+const rawText = ref('')
 const result = ref<AdminDataImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -121,6 +174,8 @@ watch(
   (open) => {
     if (open) {
       file.value = null
+      rawText.value = ''
+      importSource.value = 'file'
       result.value = null
       if (fileInput.value) {
         fileInput.value.value = ''
@@ -131,6 +186,11 @@ watch(
 
 const openFilePicker = () => {
   fileInput.value?.click()
+}
+
+const setImportSource = (source: 'file' | 'text') => {
+  importSource.value = source
+  result.value = null
 }
 
 const handleFileChange = (event: Event) => {
@@ -161,15 +221,42 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
-const handleImport = async () => {
-  if (!file.value) {
-    appStore.showError(t('admin.accounts.dataImportSelectFile'))
-    return
+const pasteFromClipboard = async () => {
+  try {
+    const text = await navigator.clipboard?.readText()
+    if (!text) {
+      appStore.showError(t('admin.accounts.dataImportClipboardReadFailed'))
+      return
+    }
+    rawText.value = text
+    result.value = null
+  } catch {
+    appStore.showError(t('admin.accounts.dataImportClipboardReadFailed'))
+  }
+}
+
+const readImportText = async (): Promise<string | null> => {
+  if (importSource.value === 'text') {
+    const text = rawText.value.trim()
+    if (!text) {
+      appStore.showError(t('admin.accounts.dataImportTextRequired'))
+      return null
+    }
+    return text
   }
 
+  if (!file.value) {
+    appStore.showError(t('admin.accounts.dataImportSelectFile'))
+    return null
+  }
+  return readFileAsText(file.value)
+}
+
+const handleImport = async () => {
   importing.value = true
   try {
-    const text = await readFileAsText(file.value)
+    const text = await readImportText()
+    if (text == null) return
     const dataPayload = JSON.parse(text)
 
     const res = await adminAPI.accounts.importData({

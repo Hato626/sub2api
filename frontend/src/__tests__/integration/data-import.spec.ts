@@ -112,4 +112,59 @@ describe('ImportDataModal', () => {
       skip_default_group_bind: false
     })
   })
+
+  it('支持从文本输入框粘贴 JSON 导入', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      account_created: 1,
+      account_failed: 0,
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      errors: []
+    })
+
+    const wrapper = mount(ImportDataModal, {
+      props: { show: true },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
+        }
+      }
+    })
+
+    const payload = { type: 'sub2api-data', version: 1, proxies: [], accounts: [] }
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.dataImportSourceText'))
+      ?.trigger('click')
+    await wrapper.find('textarea').setValue(JSON.stringify(payload))
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledWith({
+      data: payload,
+      skip_default_group_bind: false
+    })
+  })
+
+  it('文本导入为空时提示错误', async () => {
+    const wrapper = mount(ImportDataModal, {
+      props: { show: true },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
+        }
+      }
+    })
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.dataImportSourceText'))
+      ?.trigger('click')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportTextRequired')
+    expect(adminAPI.accounts.importData).not.toHaveBeenCalled()
+  })
 })
