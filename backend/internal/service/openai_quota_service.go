@@ -199,7 +199,7 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	var payload OpenAIQuotaUsage
 	resp, err := client.R().
 		SetContext(callCtx).
-		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID)).
+		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
 		SetSuccessResult(&payload).
 		Get(chatGPTUsageURL)
 	if err != nil {
@@ -236,7 +236,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 // the available count, while this endpoint can return the individual credit IDs
 // and statuses used by the earned-reset flow.
 func (s *OpenAIQuotaService) QueryResetCredits(ctx context.Context, accountID int64) (*OpenAIRateLimitCreditsList, error) {
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func (s *OpenAIQuotaService) QueryResetCredits(ctx context.Context, accountID in
 
 	resp, err := client.R().
 		SetContext(callCtx).
-		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID)).
+		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
 		Get(chatGPTRateLimitCreditsURL)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_CREDITS_REQUEST_FAILED", "upstream request failed: %v", err)
@@ -308,7 +308,7 @@ func (s *OpenAIQuotaService) QueryReferralStatus(ctx context.Context, accountID 
 // The redeem_request_id is auto-generated (uuid-like) — upstream uses it for
 // idempotency. Returns the consumed credit metadata so the UI can refresh.
 func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (*OpenAIQuotaResetResult, error) {
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
-	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID)
+	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)
 	headers["content-type"] = "application/json"
 
 	var payload OpenAIQuotaResetResult
@@ -377,7 +377,7 @@ func (s *OpenAIQuotaService) SendReferralInvite(ctx context.Context, inviterAcco
 		return nil, err
 	}
 
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, inviterAccountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, inviterAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +390,7 @@ func (s *OpenAIQuotaService) SendReferralInvite(ctx context.Context, inviterAcco
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
-	headers := buildCodexBrowserHeaders(accessToken, chatGPTAccountID, input.CookieUserAgent)
+	headers := buildCodexBrowserHeaders(accessToken, chatGPTAccountID, fedRAMP, input.CookieUserAgent)
 	headers["content-type"] = "application/json"
 	if cookie := strings.TrimSpace(input.Cookie); cookie != "" {
 		headers["cookie"] = cookie
@@ -459,23 +459,23 @@ func (s *OpenAIQuotaService) SendReferralInvite(ctx context.Context, inviterAcco
 // prepareUpstreamCall loads the account, validates it, obtains a fresh access
 // token via the shared TokenProvider, and resolves the chatgpt-account-id and
 // proxy URL. Centralized so QueryUsage / ResetCredit share validation.
-func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, err error) {
+func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool, err error) {
 	if s == nil || s.accountRepo == nil || s.tokenProvider == nil || s.privacyClientFactory == nil {
-		return "", "", "", infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
+		return "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
 	}
 
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
-		return "", "", "", infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
+		return "", "", "", false, infraerrors.Newf(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
 	}
 	if account == nil {
-		return "", "", "", infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
+		return "", "", "", false, infraerrors.New(http.StatusNotFound, "OPENAI_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
 	}
 	if account.Platform != PlatformOpenAI {
-		return "", "", "", infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_PLATFORM", "account is not an OpenAI account")
 	}
 	if account.Type != AccountTypeOAuth {
-		return "", "", "", infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_INVALID_TYPE", "account is not an OAuth account")
 	}
 
 	chatGPTAccountID = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
@@ -484,16 +484,17 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		chatGPTAccountID = strings.TrimSpace(account.GetCredential("organization_id"))
 	}
 	if chatGPTAccountID == "" {
-		return "", "", "", infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
 	}
 
 	accessToken, err = s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return "", "", "", infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
+		return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
 	}
 	if strings.TrimSpace(accessToken) == "" {
-		return "", "", "", infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
+		return "", "", "", false, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
 	}
+	fedRAMP = account.IsChatGPTAccountFedRAMP()
 
 	// account.Proxy is eager-loaded by accountRepo.GetByID (see
 	// repository.accountsToService), so we can read the proxy URL directly
@@ -511,7 +512,7 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		}
 	}
 
-	return accessToken, chatGPTAccountID, proxyURL, nil
+	return accessToken, chatGPTAccountID, proxyURL, fedRAMP, nil
 }
 
 func (s *OpenAIQuotaService) resolveReferralTargetEmail(ctx context.Context, accountID int64) (string, error) {
@@ -554,7 +555,7 @@ func (s *OpenAIQuotaService) resolveReferralTargetEmail(ctx context.Context, acc
 func (s *OpenAIQuotaService) queryReferralEligibilityBestEffort(ctx context.Context, accountID int64, cookie, userAgent string) *OpenAIReferralEligibility {
 	result := &OpenAIReferralEligibility{Checked: true}
 
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, accountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		result.Error = err.Error()
 		return result
@@ -568,7 +569,7 @@ func (s *OpenAIQuotaService) queryReferralEligibilityBestEffort(ctx context.Cont
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
-	headers := buildCodexBrowserHeaders(accessToken, chatGPTAccountID, userAgent)
+	headers := buildCodexBrowserHeaders(accessToken, chatGPTAccountID, fedRAMP, userAgent)
 	if cookie := strings.TrimSpace(cookie); cookie != "" {
 		headers["cookie"] = cookie
 	}
@@ -619,7 +620,7 @@ func (s *OpenAIQuotaService) autoRedeemReferralInvite(ctx context.Context, targe
 
 	before := s.queryAvailableResetCreditsBestEffort(ctx, targetAccountID)
 
-	accessToken, chatGPTAccountID, proxyURL, err := s.prepareUpstreamCall(ctx, targetAccountID)
+	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, targetAccountID)
 	if err != nil {
 		result.Reason = err.Error()
 		return result
@@ -633,7 +634,7 @@ func (s *OpenAIQuotaService) autoRedeemReferralInvite(ctx context.Context, targe
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 
-	headers := buildCodexBrowserHeaders(accessToken, chatGPTAccountID, "")
+	headers := buildCodexBrowserHeaders(accessToken, chatGPTAccountID, fedRAMP, "")
 	headers["accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7"
 
 	resp, err := client.R().
@@ -678,8 +679,8 @@ func (s *OpenAIQuotaService) queryAvailableResetCreditsBestEffort(ctx context.Co
 
 // buildCodexCommonHeaders sets the request headers expected by the chatgpt.com
 // backend so calls succeed past Cloudflare/WASM checks.
-func buildCodexCommonHeaders(accessToken, chatGPTAccountID string) map[string]string {
-	return map[string]string{
+func buildCodexCommonHeaders(accessToken, chatGPTAccountID string, fedRAMP bool) map[string]string {
+	headers := map[string]string{
 		"authorization":      "Bearer " + accessToken,
 		"chatgpt-account-id": chatGPTAccountID,
 		"oai-language":       openaiQuotaCodexLanguageTag,
@@ -690,10 +691,14 @@ func buildCodexCommonHeaders(accessToken, chatGPTAccountID string) map[string]st
 		"sec-fetch-dest":     openaiQuotaSecFetchDest,
 		"priority":           "u=4, i",
 	}
+	if fedRAMP {
+		headers["x-openai-fedramp"] = "true"
+	}
+	return headers
 }
 
-func buildCodexBrowserHeaders(accessToken, chatGPTAccountID, userAgent string) map[string]string {
-	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID)
+func buildCodexBrowserHeaders(accessToken, chatGPTAccountID string, fedRAMP bool, userAgent string) map[string]string {
+	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)
 	headers["origin"] = "https://chatgpt.com"
 	headers["referer"] = "https://chatgpt.com/"
 	headers["sec-fetch-site"] = "same-origin"
