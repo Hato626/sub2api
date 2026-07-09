@@ -59,6 +59,26 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 	return accounts, nil
 }
 
+func (s *adminServiceImpl) defaultGroupIDsForPlatform(ctx context.Context, platform string) []int64 {
+	groups, err := s.groupRepo.ListActiveByPlatform(ctx, platform)
+	if err != nil || len(groups) == 0 {
+		return nil
+	}
+
+	defaultGroupName := platform + "-default"
+	for _, g := range groups {
+		if g.Name == defaultGroupName {
+			return []int64{g.ID}
+		}
+	}
+
+	if len(groups) == 1 {
+		return []int64{groups[0].ID}
+	}
+
+	return nil
+}
+
 func normalizeAccountConcurrency(platform, accountType string, concurrency int) int {
 	if platform == PlatformGrok && accountType == AccountTypeOAuth {
 		if concurrency <= 0 {
@@ -73,16 +93,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
 	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
-		if err == nil {
-			for _, g := range groups {
-				if g.Name == defaultGroupName {
-					groupIDs = []int64{g.ID}
-					break
-				}
-			}
-		}
+		groupIDs = s.defaultGroupIDsForPlatform(ctx, input.Platform)
 	}
 
 	// 检查混合渠道风险（除非用户已确认）
