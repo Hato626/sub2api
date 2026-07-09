@@ -79,11 +79,11 @@
       </div>
 
       <div v-else class="space-y-2">
-        <div class="flex items-center justify-between gap-3">
-          <label class="input-label">{{ t('admin.accounts.dataImportText') }}</label>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <label class="input-label mb-0">{{ t('admin.accounts.dataImportText') }}</label>
           <button
             type="button"
-            class="btn btn-secondary btn-sm"
+            class="btn btn-secondary btn-sm self-start whitespace-nowrap sm:self-auto"
             :disabled="importing"
             @click="pasteFromClipboard"
           >
@@ -92,9 +92,10 @@
         </div>
         <textarea
           v-model.trim="rawText"
-          class="input-field min-h-48 font-mono text-xs"
+          class="input min-h-48 w-full resize-y font-mono text-xs leading-5"
           :placeholder="t('admin.accounts.dataImportTextPlaceholder')"
           :disabled="importing"
+          rows="10"
           spellcheck="false"
         />
         <div class="text-xs text-gray-500 dark:text-dark-400">
