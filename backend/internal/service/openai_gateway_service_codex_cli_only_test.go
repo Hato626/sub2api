@@ -322,6 +322,36 @@ func TestShouldFailoverOpenAIUpstreamResponseContextWindow502(t *testing.T) {
 	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "temporary upstream outage", []byte(`{"error":{"message":"temporary upstream outage"}}`)))
 }
 
+func TestIsOpenAICodexAccountUnsupportedModelError(t *testing.T) {
+	require.True(t, isOpenAICodexAccountUnsupportedModelError(
+		http.StatusBadRequest,
+		"",
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}`),
+	))
+	require.True(t, isOpenAICodexAccountUnsupportedModelError(
+		http.StatusBadRequest,
+		"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.",
+		nil,
+	))
+	require.False(t, isOpenAICodexAccountUnsupportedModelError(
+		http.StatusBadRequest,
+		"invalid api key",
+		nil,
+	))
+	require.False(t, isOpenAICodexAccountUnsupportedModelError(
+		http.StatusInternalServerError,
+		"",
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}`),
+	))
+}
+
+func TestShouldFailoverOpenAIUpstreamResponseCodexAccountUnsupportedModel(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	body := []byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}`)
+
+	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", body))
+}
+
 func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logSink, restore := captureStructuredLog(t)

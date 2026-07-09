@@ -209,6 +209,42 @@ func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 	return match(string(upstreamBody))
 }
 
+// isOpenAICodexAccountUnsupportedModelError matches OpenAI's 400 response when a
+// requested model is not entitled on the ChatGPT-plan backing a Codex OAuth account
+// (e.g. a newer model gated behind a subscription tier the account doesn't have).
+// sub2api has no way to know this ahead of scheduling (see Account.IsModelSupported /
+// openai_model_mapping.go, which only denylists foreign-vendor model prefixes), so the
+// only correct handling is to fail over to a different account rather than surface the
+// 400 straight to the client.
+func isOpenAICodexAccountUnsupportedModelError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if upstreamStatusCode != http.StatusBadRequest {
+		return false
+	}
+
+	match := func(text string) bool {
+		lower := strings.ToLower(strings.TrimSpace(text))
+		if lower == "" {
+			return false
+		}
+		return strings.Contains(lower, "not supported when using codex") &&
+			strings.Contains(lower, "chatgpt account")
+	}
+
+	if match(upstreamMsg) {
+		return true
+	}
+	if len(upstreamBody) == 0 {
+		return false
+	}
+	if match(gjson.GetBytes(upstreamBody, "detail").String()) {
+		return true
+	}
+	if match(gjson.GetBytes(upstreamBody, "error.message").String()) {
+		return true
+	}
+	return match(string(upstreamBody))
+}
+
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
 	case 401, 402, 403, 429, 529:
@@ -223,6 +259,9 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 		return false
 	}
 	if s.shouldFailoverUpstreamError(statusCode) {
+		return true
+	}
+	if isOpenAICodexAccountUnsupportedModelError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
