@@ -520,7 +520,7 @@ export default {
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
       selectedModels: 'Selected {count} model(s)',
-      supportsAllModels: '(supports all models)',
+      supportsAllModels: 'No model restriction; all models are allowed, including future models',
       requestModel: 'Request model',
       actualModel: 'Actual model',
       addMapping: 'Add Mapping',
@@ -537,7 +537,7 @@ export default {
       syncUpstreamModelsEmpty: 'Upstream returned no models to sync',
       syncUpstreamModelsFailed: 'Failed to sync upstream models',
       syncUpstreamModelsError: 'Failed to sync upstream models: {message}',
-      clearAllModels: 'Clear all models',
+      clearAllModels: 'Allow all models',
       customModelName: 'Custom model name',
       enterCustomModelName: 'Enter custom model name',
       addModel: 'Add',

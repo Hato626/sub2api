@@ -432,6 +432,12 @@ export function getModelsByPlatform(platform: string): string[] {
   }
 }
 
+// An empty model_mapping means unrestricted routing. New accounts should keep
+// this state so newly released upstream models work without manual resync.
+export function getDefaultModelWhitelistForNewAccount(_platform?: string): string[] {
+  return []
+}
+
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings

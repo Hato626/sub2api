@@ -4,9 +4,20 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import {
+  buildModelMappingObject,
+  getDefaultModelWhitelistForNewAccount,
+  getModelsByPlatform,
+  splitModelMappingObject
+} from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
+  it('新账号默认不写模型白名单，以允许当前和未来的全部模型', () => {
+    expect(getDefaultModelWhitelistForNewAccount('openai')).toEqual([])
+    expect(buildModelMappingObject('whitelist', getDefaultModelWhitelistForNewAccount('openai'), []))
+      .toBeNull()
+  })
+
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 

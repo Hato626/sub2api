@@ -7,6 +7,12 @@
         class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-dark-500 dark:bg-dark-700"
       >
         <div class="grid grid-cols-2 gap-1.5">
+          <div
+            v-if="modelValue.length === 0"
+            class="col-span-2 rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+          >
+            {{ t('admin.accounts.supportsAllModels') }}
+          </div>
           <span
             v-for="model in modelValue"
             :key="model"

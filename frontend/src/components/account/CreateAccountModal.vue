@@ -3388,9 +3388,8 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import {
-  claudeModels,
   getPresetMappingsByPlatform,
-  getModelsByPlatform,
+  getDefaultModelWhitelistForNewAccount,
   commonErrorCodes,
   buildModelMappingObject,
   fetchAntigravityDefaultMappings,
@@ -3985,8 +3984,8 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
-      // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      // Empty whitelist means unrestricted routing, including future models.
+      allowedModels.value = getDefaultModelWhitelistForNewAccount(form.platform)
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -4158,12 +4157,13 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
   geminiOAuthType.value = oauthType
 }
 
-// Auto-fill related models when switching to whitelist mode or changing platform
+// Keep new accounts unrestricted when switching mode or platform. Users can
+// explicitly sync/select models when they want a whitelist.
 watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
     if (newMode === 'whitelist') {
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = getDefaultModelWhitelistForNewAccount(form.platform)
     }
   }
 )
@@ -4484,7 +4484,7 @@ const resetForm = () => {
   modelMappings.value = []
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
-  allowedModels.value = [...claudeModels] // Default fill related models
+  allowedModels.value = getDefaultModelWhitelistForNewAccount(form.platform)
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
