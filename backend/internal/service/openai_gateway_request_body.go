@@ -305,6 +305,24 @@ func deriveOpenAIReasoningEffortFromModel(model string) string {
 	return normalizeOpenAIReasoningEffort(parts[len(parts)-1])
 }
 
+// defaultOpenAIReasoningEffortForUsage fills model defaults only for usage
+// metadata when the client omits reasoning.effort. It never mutates the
+// upstream request body. GPT-5.6 Sol currently advertises low as the default
+// for personal ChatGPT plans, while older clients may omit the field because
+// the model was introduced after their embedded model catalog.
+func defaultOpenAIReasoningEffortForUsage(model string) string {
+	modelID := strings.TrimSpace(model)
+	if strings.Contains(modelID, "/") {
+		parts := strings.Split(modelID, "/")
+		modelID = parts[len(parts)-1]
+	}
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	if modelID == "gpt-5.6-sol" {
+		return "low"
+	}
+	return ""
+}
+
 type openAIRequestView struct {
 	body               []byte
 	Model              string
@@ -559,6 +577,9 @@ func extractOpenAIReasoningEffortFromBody(body []byte, requestedModel string) *s
 	}
 
 	value := deriveOpenAIReasoningEffortFromModel(requestedModel)
+	if value == "" {
+		value = defaultOpenAIReasoningEffortForUsage(requestedModel)
+	}
 	if value == "" {
 		return nil
 	}
@@ -1135,6 +1156,9 @@ func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string)
 	}
 
 	value := deriveOpenAIReasoningEffortFromModel(requestedModel)
+	if value == "" {
+		value = defaultOpenAIReasoningEffortForUsage(requestedModel)
+	}
 	if value == "" {
 		return nil
 	}

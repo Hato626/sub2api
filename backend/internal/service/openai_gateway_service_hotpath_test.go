@@ -809,6 +809,20 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "high",
 		},
 		{
+			name:      "Sol 缺失字段时记录当前默认 low",
+			body:      []byte(`{"input":"hi"}`),
+			model:     "gpt-5.6-sol",
+			wantNil:   false,
+			wantValue: "low",
+		},
+		{
+			name:      "带 provider 前缀的 Sol 也补默认 low",
+			body:      []byte(`{"input":"hi"}`),
+			model:     "openai/gpt-5.6-sol",
+			wantNil:   false,
+			wantValue: "low",
+		},
+		{
 			name:    "未知后缀不返回",
 			body:    []byte(`{"input":"hi"}`),
 			model:   "gpt-5-unknown",
