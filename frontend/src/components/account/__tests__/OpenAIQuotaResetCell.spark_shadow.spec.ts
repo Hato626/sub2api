@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import OpenAIQuotaResetCell from '../OpenAIQuotaResetCell.vue'
 import type { Account } from '@/types'
-import { queryOpenAIQuota } from '@/api/admin/accounts'
+import { queryOpenAIQuota, queryOpenAIReferralStatus } from '@/api/admin/accounts'
 
 vi.mock('@/api/admin/accounts', () => ({
+  list: vi.fn(),
   queryOpenAIQuota: vi.fn(),
+  queryOpenAIReferralStatus: vi.fn(),
   resetOpenAIQuota: vi.fn(),
+  sendOpenAIReferralInvite: vi.fn(),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -55,6 +58,11 @@ const resetButton = (wrapper: ReturnType<typeof mount>) =>
 
 beforeEach(() => {
   vi.mocked(queryOpenAIQuota).mockReset()
+  vi.mocked(queryOpenAIReferralStatus).mockReset()
+  vi.mocked(queryOpenAIReferralStatus).mockResolvedValue({
+    account_id: 1,
+    remaining_invites: null,
+  })
 })
 
 describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
