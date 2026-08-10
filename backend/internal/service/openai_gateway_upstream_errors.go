@@ -247,7 +247,7 @@ func isOpenAICodexAccountUnsupportedModelError(upstreamStatusCode int, upstreamM
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 402, 403, 429, 529:
+	case 401, 402, 403, 405, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
