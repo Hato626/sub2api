@@ -4145,6 +4145,23 @@ const form = reactive({
   expires_at: null as number | null
 })
 
+const existingGroupIDsForPlatform = (
+  platform: AccountPlatform,
+  enableMixedScheduling: boolean
+): number[] => {
+  return props.groups
+    .filter((group) => {
+      if (group.status !== 'active') return false
+      if (group.platform === platform || group.platform === 'composite') return true
+      return (
+        platform === 'antigravity' &&
+        enableMixedScheduling &&
+        (group.platform === 'anthropic' || group.platform === 'gemini')
+      )
+    })
+    .map((group) => group.id)
+}
+
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
   // Antigravity upstream 类型不需要 OAuth 流程
@@ -4189,6 +4206,15 @@ const canExchangeCode = computed(() => {
 })
 
 // Watchers
+watch(
+  [() => props.show, () => props.groups, () => form.platform, mixedScheduling],
+  ([show, , platform, enableMixedScheduling]) => {
+    if (!show) return
+    form.group_ids = existingGroupIDsForPlatform(platform, enableMixedScheduling)
+  },
+  { immediate: true }
+)
+
 watch(
   () => props.show,
   (newVal) => {

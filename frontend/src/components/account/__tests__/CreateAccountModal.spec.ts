@@ -58,6 +58,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import type { AdminGroup } from '@/types'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -84,9 +85,9 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
-function mountModal() {
+function mountModal(groups: AdminGroup[] = []) {
   return mount(CreateAccountModal, {
-    props: { show: true, proxies: [], groups: [] },
+    props: { show: true, proxies: [], groups },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -165,6 +166,26 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('automatically selects active groups compatible with the selected platform', async () => {
+    const groups = [
+      { id: 1, platform: 'anthropic', status: 'active' },
+      { id: 2, platform: 'openai', status: 'active' },
+      { id: 3, platform: 'openai', status: 'inactive' },
+      { id: 4, platform: 'composite', status: 'active' },
+    ] as AdminGroup[]
+    const wrapper = mountModal(groups)
+
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.group_ids).toEqual([2, 4])
   })
 
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
