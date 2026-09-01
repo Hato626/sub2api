@@ -1211,11 +1211,23 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 		id = generateResponsesID()
 	}
 
+	// Carry the upstream's own creation timestamp when it sent one; otherwise
+	// stamp now, same fallback shape as the generated id above.
+	createdAt := int64(0)
+	if resp != nil {
+		createdAt = resp.Created
+	}
+	if createdAt <= 0 {
+		createdAt = time.Now().Unix()
+	}
+
 	out := &ResponsesResponse{
-		ID:     id,
-		Object: "response",
-		Model:  model,
-		Status: "completed",
+		ID:          id,
+		Object:      "response",
+		CreatedAt:   createdAt,
+		Model:       model,
+		Status:      "completed",
+		ServiceTier: chatServiceTier(resp),
 	}
 	if resp == nil {
 		out.Output = []ResponsesOutput{emptyResponsesMessageOutput()}
@@ -1240,6 +1252,13 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 		out.Usage = ChatUsageToResponsesUsage(resp.Usage)
 	}
 	return out
+}
+
+func chatServiceTier(resp *ChatCompletionsResponse) string {
+	if resp == nil {
+		return ""
+	}
+	return resp.ServiceTier
 }
 
 func chatMessageToResponsesOutput(message ChatMessage, customTools, functionTools map[string]bool, toolSearch bool, namespaceTools map[string]NamespacedToolName) []ResponsesOutput {
@@ -1414,6 +1433,7 @@ type ChatCompletionsToResponsesStreamState struct {
 	ResponseID     string
 	Model          string
 	Created        int64
+	ServiceTier    string // upstream Chat chunk service_tier, echoed on response events
 	SequenceNumber int
 	CreatedSent    bool
 	CompletedSent  bool
@@ -1544,6 +1564,9 @@ func ChatCompletionsChunkToResponsesEvents(
 	}
 	if state.Model == "" && chunk.Model != "" {
 		state.Model = chunk.Model
+	}
+	if chunk.ServiceTier != "" {
+		state.ServiceTier = chunk.ServiceTier
 	}
 	if chunk.Usage != nil {
 		state.Usage = ChatUsageToResponsesUsage(chunk.Usage)
@@ -1699,8 +1722,10 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 		Response: &ResponsesResponse{
 			ID:                state.ResponseID,
 			Object:            "response",
+			CreatedAt:         state.Created,
 			Model:             state.Model,
 			Status:            status,
+			ServiceTier:       state.ServiceTier,
 			Output:            state.chatOutput(),
 			Usage:             state.Usage,
 			IncompleteDetails: incompleteDetails,
@@ -1716,11 +1741,13 @@ func ensureChatToResponsesCreated(state *ChatCompletionsToResponsesStreamState) 
 	state.CreatedSent = true
 	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.created", &ResponsesStreamEvent{
 		Response: &ResponsesResponse{
-			ID:     state.ResponseID,
-			Object: "response",
-			Model:  state.Model,
-			Status: "in_progress",
-			Output: []ResponsesOutput{},
+			ID:          state.ResponseID,
+			Object:      "response",
+			CreatedAt:   state.Created,
+			Model:       state.Model,
+			Status:      "in_progress",
+			ServiceTier: state.ServiceTier,
+			Output:      []ResponsesOutput{},
 		},
 	})}
 }
