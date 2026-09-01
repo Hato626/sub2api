@@ -1850,7 +1850,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+		// The images compatibility endpoints build the Responses payload themselves,
+		// including both tool_choice=image_generation and the matching tool entry.
+		// If upstream nevertheless says that choice is absent, the selected account
+		// no longer has image-generation capability. Treat that account-scoped 400 as
+		// failover-worthy so the current request can continue on another account;
+		// handleFailoverSideEffects records the image-scope cooldown that keeps future
+		// requests from selecting the same account until it can be probed again.
+		imageCapabilityLost := isOpenAIImagesSelfBuiltRequest(upstreamCtx) &&
+			isOpenAIImageCapabilityLossError(resp.StatusCode, respBody)
+		if imageCapabilityLost || s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,

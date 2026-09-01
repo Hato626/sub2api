@@ -279,6 +279,9 @@ func TestOpenAIGatewayServiceForwardImages_CapabilityLossCoolsImageScope(t *test
 
 	require.Nil(t, result)
 	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
 	require.Len(t, repo.modelRateLimitCalls, 1)
 	call := repo.modelRateLimitCalls[0]
 	require.Equal(t, account.ID, call.accountID)
