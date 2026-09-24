@@ -641,6 +641,7 @@ export default {
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
         probeUpstreamBilling: '探测上游倍率',
+        test: '批量测试',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
@@ -664,6 +665,35 @@ export default {
         longContextShadowHint: '长上下文计费归母账号所有。选中的影子账号仍跟随母账号，筛选全量目标时同样如此。',
         longContextParentRequired: '选中的账号全部是影子账号，请选择母账号修改长上下文计费。',
         mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
+      },
+      bulkTest: {
+        title: '批量测试账号',
+        modeLabel: '测试模式',
+        standardHint: '使用每个账号的默认模型执行常规连接测试。',
+        pelicanHint: '每个账号执行一次 HTML/SVG 提示词，并保留首次完整输出。',
+        attributionHint: '每个账号执行 3 组数字挑战，并在本地计算归因结果。',
+        parallelHint: '最多同时测试 4 个账号；请求使用每个账号的默认测试模型。',
+        progress: '已完成 {completed}/{total}',
+        start: '开始批量测试',
+        retry: '再次测试',
+        cancel: '取消测试',
+        running: '测试中...',
+        success: '测试通过',
+        cancelled: '已取消',
+        cancelling: '正在取消...',
+        failed: '测试失败',
+        incomplete: '测试流在完成前中断。',
+        emptyResponse: '模型返回了空内容。',
+        noResponseBody: '服务器没有返回响应内容。',
+        viewOutput: '查看输出',
+        prediction: '最可能为 {model}（{probability}）',
+        status: {
+          pending: '等待中',
+          running: '测试中',
+          success: '通过',
+          error: '失败',
+          cancelled: '已取消'
+        }
       },
       bulkDeleteTitle: '批量删除账号',
       bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',

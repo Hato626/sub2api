@@ -521,6 +521,7 @@ export default {
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
         probeUpstreamBilling: 'Probe Upstream Rate',
+        test: 'Batch Test',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
@@ -545,6 +546,35 @@ export default {
         longContextShadowHint: 'Long-context billing belongs to the parent account. Selected shadow accounts keep following their parent, including when targets come from a filter.',
         longContextParentRequired: 'All selected accounts are shadows. Select the parent account to change long-context billing.',
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
+      },
+      bulkTest: {
+        title: 'Batch Account Test',
+        modeLabel: 'Test mode',
+        standardHint: 'Runs the normal connection test using each account’s default model.',
+        pelicanHint: 'Runs the HTML/SVG prompt once per account and keeps the first complete output.',
+        attributionHint: 'Runs three number challenges per account and calculates attribution locally.',
+        parallelHint: 'Runs up to 4 accounts in parallel. Requests use each account’s default test model.',
+        progress: '{completed}/{total} completed',
+        start: 'Start Batch Test',
+        retry: 'Run Again',
+        cancel: 'Cancel Tests',
+        running: 'Testing...',
+        success: 'Test passed',
+        cancelled: 'Cancelled',
+        cancelling: 'Cancelling...',
+        failed: 'Test failed',
+        incomplete: 'The test stream ended before completion.',
+        emptyResponse: 'The model returned an empty response.',
+        noResponseBody: 'The server returned no response body.',
+        viewOutput: 'View output',
+        prediction: 'Likely {model} ({probability})',
+        status: {
+          pending: 'Pending',
+          running: 'Running',
+          success: 'Passed',
+          error: 'Failed',
+          cancelled: 'Cancelled'
+        }
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',
