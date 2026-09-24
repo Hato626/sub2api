@@ -21,16 +21,16 @@ type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
 	quotaService       openAIQuotaService
+	referralService    openAIReferralService
 	rateLimitService   openAIAccountStateRecoverer
 }
 
 type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
+	CacheCreditsSnapshot(ctx context.Context, accountID int64, usage *service.OpenAIQuotaUsage) error
 	CachePostResetSnapshot(ctx context.Context, accountID int64, usage *service.OpenAIQuotaUsage) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
-	QueryReferralStatus(ctx context.Context, accountID int64) (*service.OpenAIReferralStatus, error)
-	SendReferralInvite(ctx context.Context, inviterAccountID int64, input service.OpenAIReferralInviteInput) (*service.OpenAIReferralInviteResult, error)
 }
 
 type openAIAccountStateRecoverer interface {
@@ -59,7 +59,8 @@ type openAIQuotaResetResponse struct {
 // failed display-cache write must never discard a successful upstream read.
 type openAIQuotaRefreshResponse struct {
 	service.OpenAIQuotaUsage
-	CachePersisted bool `json:"cache_persisted"`
+	CachePersisted        bool `json:"cache_persisted"`
+	CreditsCachePersisted bool `json:"credits_cache_persisted"`
 }
 
 // openAIQuotaResetPostProcessContext detaches the post-reset bookkeeping from the
@@ -94,6 +95,7 @@ func NewOpenAIOAuthHandler(
 	// `== nil` capability guards below and panic instead of returning 400.
 	if quotaService != nil {
 		h.quotaService = quotaService
+		h.referralService = quotaService
 	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService
@@ -524,6 +526,11 @@ func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
 	service.NotifyOpenAIAutoResetCredit(accountID)
 
 	refreshResponse := openAIQuotaRefreshResponse{OpenAIQuotaUsage: *usage}
+	if err := h.quotaService.CacheCreditsSnapshot(c.Request.Context(), accountID, usage); err != nil {
+		slog.Warn("openai_quota_credits_cache_persist_failed", "account_id", accountID, "error", err)
+	} else {
+		refreshResponse.CreditsCachePersisted = true
+	}
 	// A failed snapshot write leaves the previous cache intact — report it as a
 	// partial success instead of discarding the usage payload we just fetched,
 	// which would leave the card without a credit count at all.
@@ -614,74 +621,4 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 		resetResponse.Account = dto.AccountFromService(postResult.Account)
 	}
 	response.Success(c, resetResponse)
-}
-
-// QueryReferralStatus returns Codex earned-reset / invitation status for an OpenAI account.
-// GET /api/v1/admin/openai/accounts/:id/referral-status
-func (h *OpenAIOAuthHandler) QueryReferralStatus(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-	if h.quotaService == nil {
-		response.BadRequest(c, "openai quota service is not enabled")
-		return
-	}
-	status, err := h.quotaService.QueryReferralStatus(c.Request.Context(), accountID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, status)
-}
-
-// OpenAIReferralInviteRequest sends either explicit invite emails or a single
-// target account ID from the account pool. When target_account_id is present,
-// the backend resolves the account email and attempts best-effort redemption.
-type OpenAIReferralInviteRequest struct {
-	Emails          []string `json:"emails"`
-	TargetAccountID *int64   `json:"target_account_id"`
-	Cookie          string   `json:"cookie"`
-	CookieUserAgent string   `json:"cookie_user_agent"`
-	AutoRedeem      *bool    `json:"auto_redeem"`
-}
-
-// SendReferralInvite issues a Codex earned-reset invitation.
-// POST /api/v1/admin/openai/accounts/:id/referral-invite
-func (h *OpenAIOAuthHandler) SendReferralInvite(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-	if h.quotaService == nil {
-		response.BadRequest(c, "openai quota service is not enabled")
-		return
-	}
-
-	var req OpenAIReferralInviteRequest
-	if err := c.ShouldBindJSON(&req); err != nil && !strings.Contains(strings.ToLower(err.Error()), "eof") {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	autoRedeem := true
-	if req.AutoRedeem != nil {
-		autoRedeem = *req.AutoRedeem
-	}
-
-	result, err := h.quotaService.SendReferralInvite(c.Request.Context(), accountID, service.OpenAIReferralInviteInput{
-		Emails:          req.Emails,
-		TargetAccountID: req.TargetAccountID,
-		Cookie:          strings.TrimSpace(req.Cookie),
-		CookieUserAgent: strings.TrimSpace(req.CookieUserAgent),
-		AutoRedeem:      autoRedeem,
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, result)
 }

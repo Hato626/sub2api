@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import type { OpenAIReferralRefreshResult, OpenAIReferralSendResult } from '@/types/openaiReferrals'
 import type {
   Account,
   AccountListItem,
@@ -26,7 +27,11 @@ import type {
   UpstreamBillingProbeSettings,
   UpstreamBillingRatesResponse,
   OllamaCloudUsageSettings,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  GrokMediaEligibilityMode,
+  GrokMediaEligibilityState,
+  OpenCodeGoUsageSettings,
+  OpenCodeGoUsageState
 } from '@/types'
 
 /**
@@ -238,6 +243,24 @@ export async function update(id: number, updates: UpdateAccountRequest): Promise
   return data
 }
 
+export async function getGrokMediaEligibility(id: number): Promise<GrokMediaEligibilityState> {
+  const { data } = await apiClient.get<GrokMediaEligibilityState>(
+    `/admin/accounts/${id}/grok-media-eligibility`
+  )
+  return data
+}
+
+export async function updateGrokMediaEligibility(
+  id: number,
+  mode: GrokMediaEligibilityMode
+): Promise<GrokMediaEligibilityState> {
+  const { data } = await apiClient.put<GrokMediaEligibilityState>(
+    `/admin/accounts/${id}/grok-media-eligibility`,
+    { mode }
+  )
+  return data
+}
+
 /**
  * Check mixed-channel risk for account-group binding.
  */
@@ -291,9 +314,13 @@ export async function testAccount(id: number): Promise<{
  * @param id - Account ID
  * @returns Updated account
  */
-export async function refreshCredentials(id: number): Promise<Account> {
-  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/refresh`)
-  return data
+export type RefreshCredentialsResult =
+  | { account: Account; message: string; warning: 'missing_project_id_temporary' }
+  | { account: Account; message?: never; warning?: never }
+
+export async function refreshCredentials(id: number): Promise<RefreshCredentialsResult> {
+  const { data } = await apiClient.post<Account | RefreshCredentialsResult>(`/admin/accounts/${id}/refresh`)
+  return 'account' in data ? data : { account: data }
 }
 
 /**
@@ -600,6 +627,7 @@ export interface UpstreamModelMetadata {
   supported_reasoning_levels?: string[]
   input_modalities?: string[]
   context_window?: number
+  max_context_window?: number
   max_output_tokens?: number
 }
 
@@ -893,8 +921,14 @@ export interface OpenAIQuotaUsage {
   rate_limit?: OpenAIRateLimit | null
   additional_rate_limits?: OpenAIAdditionalRateLimit[]
   rate_limit_reset_credits?: OpenAIRateLimitResetCredits | null
-  referral_beacon?: Record<string, unknown> | null
+  credits?: OpenAICredits | null
   fetched_at: number
+}
+
+export interface OpenAICredits {
+  has_credits: boolean
+  unlimited: boolean
+  balance: string | null
 }
 
 export interface OpenAIQuotaResetCredit {
@@ -924,71 +958,7 @@ export interface OpenAIQuotaResetResult {
 /** Usage payload plus whether the reset-credit snapshot was persisted. */
 export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
   cache_persisted: boolean
-}
-
-export interface OpenAIRateLimitCreditsList {
-  credits?: OpenAIQuotaResetCredit[]
-  available_count: number
-  raw?: unknown
-  fetched_at: number
-}
-
-export interface OpenAIReferralEligibility {
-  checked: boolean
-  http_status?: number
-  should_show?: boolean | null
-  grant_action?: string
-  grant_amount?: number | null
-  remaining_referrals?: number | null
-  ineligible_reason?: string
-  ineligible_reason_code?: string
-  error?: string
-}
-
-export interface OpenAIReferralStatus {
-  usage?: OpenAIQuotaUsage | null
-  credits?: OpenAIRateLimitCreditsList | null
-  eligibility?: OpenAIReferralEligibility | null
-  referral_beacon?: Record<string, unknown> | null
-  remaining_invites?: number | null
-  fetched_at: number
-}
-
-export interface OpenAIReferralInviteLink {
-  referral_id?: string
-  email?: string
-  invite_url?: string
-}
-
-export interface OpenAIReferralAutoRedeemResult {
-  attempted: boolean
-  success: boolean
-  verified: boolean
-  status_code?: number
-  url?: string
-  reason?: string
-  response_body?: string
-}
-
-export interface OpenAIReferralInviteResult {
-  ok: boolean
-  status_code: number
-  request_id?: string
-  referral_key: string
-  emails: string[]
-  target_account_id?: number | null
-  invites?: OpenAIReferralInviteLink[]
-  upstream?: Record<string, unknown>
-  upstream_raw?: string
-  auto_redeem?: OpenAIReferralAutoRedeemResult | null
-}
-
-export interface OpenAIReferralInviteRequest {
-  emails?: string[]
-  target_account_id?: number | null
-  cookie?: string
-  cookie_user_agent?: string
-  auto_redeem?: boolean
+  credits_cache_persisted?: boolean
 }
 
 /**
@@ -1007,6 +977,23 @@ export async function refreshOpenAIQuota(id: number): Promise<OpenAIQuotaRefresh
   return data
 }
 
+export async function refreshOpenAIReferrals(id: number): Promise<OpenAIReferralRefreshResult> {
+  const { data } = await apiClient.post<OpenAIReferralRefreshResult>(
+    `/admin/openai/accounts/${id}/referrals/refresh`
+  )
+  return data
+}
+
+export async function sendOpenAIReferralInvite(
+  id: number,
+  input: { email: string; program_id: string; confirmed: boolean }
+): Promise<OpenAIReferralSendResult> {
+  const { data } = await apiClient.post<OpenAIReferralSendResult>(
+    `/admin/openai/accounts/${id}/referrals/invite`, input, { timeout: 90_000 }
+  )
+  return data
+}
+
 /**
  * Consume one rate-limit-reset credit for an OpenAI/Codex OAuth account.
  *
@@ -1020,29 +1007,6 @@ export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResu
     `/admin/openai/accounts/${id}/reset-quota`,
     undefined,
     { timeout: 90_000 }
-  )
-  return data
-}
-
-/**
- * Query Codex earned-reset referral status for an OAuth account.
- */
-export async function queryOpenAIReferralStatus(id: number): Promise<OpenAIReferralStatus> {
-  const { data } = await apiClient.get<OpenAIReferralStatus>(`/admin/openai/accounts/${id}/referral-status`)
-  return data
-}
-
-/**
- * Send Codex earned-reset referral invite. When target_account_id is supplied,
- * backend resolves the target email and attempts best-effort redemption.
- */
-export async function sendOpenAIReferralInvite(
-  id: number,
-  payload: OpenAIReferralInviteRequest
-): Promise<OpenAIReferralInviteResult> {
-  const { data } = await apiClient.post<OpenAIReferralInviteResult>(
-    `/admin/openai/accounts/${id}/referral-invite`,
-    payload
   )
   return data
 }
@@ -1135,6 +1099,38 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
   return data
 }
 
+export async function getOpenCodeGoUsageSettings(): Promise<OpenCodeGoUsageSettings> {
+  const { data } = await apiClient.get<OpenCodeGoUsageSettings>('/admin/accounts/opencode-go-usage/settings')
+  return data
+}
+
+export async function updateOpenCodeGoUsageSettings(
+  settings: OpenCodeGoUsageSettings
+): Promise<OpenCodeGoUsageSettings> {
+  const { data } = await apiClient.put<OpenCodeGoUsageSettings>(
+    '/admin/accounts/opencode-go-usage/settings',
+    settings
+  )
+  return data
+}
+
+export async function getOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.get<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage`)
+  return data
+}
+
+export async function setOpenCodeGoUsageAutoRefresh(id: number, enabled: boolean): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.put<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage/auto-refresh`, {
+    enabled
+  })
+  return data
+}
+
+export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.post<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage/refresh`)
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -1143,6 +1139,8 @@ export const accountsAPI = {
   create,
   duplicate,
   update,
+  getGrokMediaEligibility,
+  updateGrokMediaEligibility,
   checkMixedChannelRisk,
   delete: deleteAccount,
   toggleStatus,
@@ -1184,8 +1182,6 @@ export const accountsAPI = {
   revertProxyFallback,
   refreshOpenAIQuota,
   resetOpenAIQuota,
-  queryOpenAIReferralStatus,
-  sendOpenAIReferralInvite,
   createSparkShadow,
   getUpstreamBillingProbeSettings,
   updateUpstreamBillingProbeSettings,
@@ -1198,7 +1194,12 @@ export const accountsAPI = {
   saveOllamaCloudUsageSession,
   deleteOllamaCloudUsageSession,
   setOllamaCloudUsageAutoRefresh,
-  refreshOllamaCloudUsage
+  refreshOllamaCloudUsage,
+  getOpenCodeGoUsageSettings,
+  updateOpenCodeGoUsageSettings,
+  getOpenCodeGoUsage,
+  setOpenCodeGoUsageAutoRefresh,
+  refreshOpenCodeGoUsage
 }
 
 export default accountsAPI
