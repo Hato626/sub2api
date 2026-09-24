@@ -42,7 +42,7 @@
       </div>
 
       <!-- Grok: mode first, then optional model / mode params -->
-      <div v-if="isGrokAccount" class="space-y-1.5">
+      <div v-if="isGrokAccount && diagnosticMode === 'standard'" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.grok.testMode') }}
         </label>
@@ -70,7 +70,21 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="account" class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.diagnosticTestMode') }}
+        </label>
+        <Select
+          v-model="diagnosticMode"
+          :options="diagnosticModeOptions"
+          :disabled="status === 'connecting'"
+        />
+        <p v-if="diagnosticMode !== 'standard'" class="text-xs text-gray-500 dark:text-gray-400">
+          {{ diagnosticMode === 'pelican' ? t('admin.accounts.pelicanTestHint') : t('admin.accounts.attributionTestHint') }}
+        </p>
+      </div>
+
+      <div v-if="isOpenAIAccount && diagnosticMode === 'standard'" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -280,6 +294,32 @@
         </div>
       </div>
 
+      <div
+        v-if="attributionResult"
+        class="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-500 dark:bg-dark-700"
+      >
+        <div class="flex items-center justify-between text-sm font-medium text-gray-800 dark:text-gray-100">
+          <span>{{ t('admin.accounts.attributionResult') }}</span>
+          <span class="text-primary-600 dark:text-primary-400">
+            {{ attributionResult.predictionName }} · {{ (attributionResult.probability * 100).toFixed(1) }}%
+          </span>
+        </div>
+        <div class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.attributionValidOutputs', { count: attributionResult.usedOutputs }) }}
+        </div>
+        <div class="max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white dark:border-dark-500 dark:bg-dark-800">
+          <div
+            v-for="(row, index) in attributionResult.results.slice(0, 8)"
+            :key="row.model"
+            class="flex items-center gap-2 border-b border-gray-100 px-3 py-2 text-xs last:border-b-0 dark:border-dark-600"
+          >
+            <span class="w-5 text-gray-400">{{ index + 1 }}</span>
+            <span class="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-200">{{ row.displayName }}</span>
+            <span class="w-14 text-right text-gray-500 dark:text-gray-400">{{ (row.probability * 100).toFixed(1) }}%</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Image Lightbox -->
       <Teleport to="body">
         <Transition name="fade">
@@ -376,6 +416,13 @@ import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
+import {
+  analyzeModelTrace,
+  createModelTraceChallenges,
+  loadModelTraceBank,
+  PELICAN_PROMPT,
+  type ModelTraceResult
+} from '@/utils/modeltrace'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -414,6 +461,8 @@ const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
 const testMode = ref<'default' | 'compact'>('default')
+const diagnosticMode = ref<'standard' | 'pelican' | 'attribution'>('standard')
+const attributionResult = ref<ModelTraceResult | null>(null)
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
@@ -427,6 +476,11 @@ const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+])
+const diagnosticModeOptions = computed(() => [
+  { value: 'standard', label: t('admin.accounts.diagnosticTestModeStandard') },
+  { value: 'pelican', label: t('admin.accounts.diagnosticTestModePelican') },
+  { value: 'attribution', label: t('admin.accounts.diagnosticTestModeAttribution') }
 ])
 const grokTestModeOptions = computed(() => [
   { value: 'text', label: t('admin.accounts.grok.testModeText') },
@@ -478,12 +532,22 @@ const supportsImageTest = computed(
 
 // Model select only when the mode needs a model.
 const showModelSelect = computed(() => {
+  if (diagnosticMode.value !== 'standard') return true
   if (!isGrokAccount.value) return true
   return grokTestMode.value === 'text' || grokTestMode.value === 'image' || grokTestMode.value === 'video'
 })
 
 const modelOptionsForMode = computed(() => {
-  if (!isGrokAccount.value) return availableModels.value
+  if (diagnosticMode.value !== 'standard' && isGrokAccount.value) {
+    return availableModels.value.filter((model) => isGrokTextModel(model.id))
+  }
+  if (!isGrokAccount.value) {
+    if (diagnosticMode.value === 'standard') return availableModels.value
+    return availableModels.value.filter((model) => {
+      const id = model.id.toLowerCase()
+      return !id.startsWith('gpt-image-') && !(id.startsWith('gemini-') && id.includes('-image'))
+    })
+  }
   if (grokTestMode.value === 'image') {
     return availableModels.value.filter((m) => isGrokImageModel(m.id))
   }
@@ -651,6 +715,8 @@ const promptInputHint = computed(() => {
 })
 
 const testModeSummary = computed(() => {
+  if (diagnosticMode.value === 'pelican') return t('admin.accounts.pelicanTestMode')
+  if (diagnosticMode.value === 'attribution') return t('admin.accounts.attributionTestMode')
   if (isGrokAccount.value) {
     switch (grokTestMode.value) {
       case 'video':
@@ -739,6 +805,7 @@ watch(
     if (newVal && props.account) {
       testPrompt.value = ''
       testMode.value = 'default'
+      diagnosticMode.value = 'standard'
       grokTestMode.value = 'text'
       resetState()
       await loadAvailableModels()
@@ -758,6 +825,15 @@ watch(grokTestMode, () => {
   clearMediaUploads()
   pickDefaultModelForMode()
   applyDefaultPromptForMode()
+})
+
+watch(diagnosticMode, () => {
+  attributionResult.value = null
+  if (diagnosticMode.value === 'standard') return
+  const options = modelOptionsForMode.value
+  if (!options.some((model) => model.id === selectedModelId.value)) {
+    selectedModelId.value = options[0]?.id || ''
+  }
 })
 
 const loadAvailableModels = async () => {
@@ -799,6 +875,7 @@ const resetState = () => {
   generatedAudios.value = []
   generatedVideos.value = []
   previewImageUrl.value = ''
+  attributionResult.value = null
 }
 
 const handleClose = () => {
@@ -825,6 +902,130 @@ const scrollToBottom = async () => {
   }
 }
 
+interface DiagnosticEvent {
+  type: string
+  text?: string
+  model?: string
+  success?: boolean
+  error?: string
+}
+
+const runDiagnosticProbe = async (prompt: string, index: number, total: number): Promise<string> => {
+  if (!props.account || !abortController) throw new Error(t('admin.accounts.testFailed'))
+
+  const requestBody: { model_id: string; prompt: string; mode?: string } = {
+    model_id: selectedModelId.value,
+    prompt
+  }
+  if (isOpenAIAccount.value) requestBody.mode = 'default'
+  if (isGrokAccount.value) requestBody.mode = 'text'
+
+  addLine(
+    diagnosticMode.value === 'pelican'
+      ? t('admin.accounts.pelicanSending')
+      : t('admin.accounts.attributionSending', { current: index, total }),
+    'text-cyan-300'
+  )
+
+  const response = await fetch(buildApiUrl(`/admin/accounts/${props.account.id}/test`), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+      'Content-Type': 'application/json',
+      [ADMIN_UI_REQUEST_HEADER]: '1'
+    },
+    body: JSON.stringify(requestBody),
+    signal: abortController.signal
+  })
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error(t('admin.accounts.grok.noResponseBody'))
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let content = ''
+  let completed = false
+  const consumeLine = (line: string) => {
+    if (!line.startsWith('data: ')) return
+    const jsonStr = line.slice(6).trim()
+    if (!jsonStr) return
+    const event = JSON.parse(jsonStr) as DiagnosticEvent
+    if (event.type === 'test_start' && event.model) {
+      addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
+    } else if (event.type === 'content' && event.text) {
+      content += event.text
+      streamingContent.value = content
+      scrollToBottom()
+    } else if (event.type === 'status' && event.text) {
+      addLine(event.text, 'text-cyan-300')
+    } else if (event.type === 'error') {
+      throw new Error(event.error || t('admin.accounts.testFailed'))
+    } else if (event.type === 'test_complete') {
+      if (!event.success) throw new Error(event.error || t('admin.accounts.testFailed'))
+      completed = true
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    lines.forEach(consumeLine)
+  }
+  if (buffer) consumeLine(buffer)
+  if (!completed) throw new Error(t('admin.accounts.testFailed'))
+  streamingContent.value = ''
+  return content
+}
+
+const startDiagnosticTest = async () => {
+  if (!props.account) return
+  abortStream()
+  abortController = new AbortController()
+  const prompts =
+    diagnosticMode.value === 'pelican'
+      ? [{ prompt: PELICAN_PROMPT, expectedCount: 0 }]
+      : createModelTraceChallenges(3)
+  const outputs: Array<{ text: string; expectedCount: number }> = []
+
+  try {
+    for (let index = 0; index < prompts.length; index += 1) {
+      const challenge = prompts[index]
+      const content = await runDiagnosticProbe(challenge.prompt, index + 1, prompts.length)
+      if (!content.trim()) throw new Error(t('admin.accounts.emptyTestResponse'))
+      outputs.push({ text: content, expectedCount: challenge.expectedCount })
+      addLine(content, 'text-green-300')
+      addLine('', 'text-gray-300')
+    }
+
+    if (diagnosticMode.value === 'attribution') {
+      addLine(t('admin.accounts.attributionCalculating'), 'text-yellow-300')
+      const result = analyzeModelTrace(outputs, await loadModelTraceBank())
+      attributionResult.value = result
+      addLine(
+        t('admin.accounts.attributionComplete', {
+          model: result.predictionName,
+          probability: (result.probability * 100).toFixed(1)
+        }),
+        'text-green-300'
+      )
+    }
+    status.value = 'success'
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      status.value = 'idle'
+      return
+    }
+    status.value = 'error'
+    const msg = error instanceof Error ? error.message : t('common.unknownError')
+    errorMessage.value = msg
+    addLine(t('admin.accounts.errorPrefix', { message: msg }), 'text-red-400')
+    streamingContent.value = ''
+  }
+}
+
 const startTest = async () => {
   if (!props.account || !canStartTest.value) return
 
@@ -838,6 +1039,11 @@ const startTest = async () => {
     addLine(t('admin.accounts.grok.selectedTestMode', { mode: modeLabel }), 'text-gray-400')
   }
   addLine('', 'text-gray-300')
+
+  if (diagnosticMode.value !== 'standard') {
+    await startDiagnosticTest()
+    return
+  }
 
   abortStream()
 
