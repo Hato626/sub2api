@@ -84,9 +84,9 @@ const maxAccountTestMediaBytes = 8 << 20
 
 const (
 	defaultGeminiTextTestPrompt  = "hi"
-	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
-	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
-	defaultGrokImageTestPrompt   = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+	defaultGeminiImageTestPrompt = "Generate an SVG of a pelican riding a bicycle."
+	defaultOpenAIImageTestPrompt = "Generate an SVG of a pelican riding a bicycle."
+	defaultGrokImageTestPrompt   = "Generate an SVG of a pelican riding a bicycle."
 	defaultGrokVideoTestPrompt   = "A red ball bouncing once on a white floor, short simple motion."
 	defaultGrokSearchTestQuery   = "xAI Grok"
 	defaultGrokTTSTestText       = "Hello from Sub2API account connectivity test."

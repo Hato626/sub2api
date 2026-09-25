@@ -1591,7 +1591,7 @@ export default {
       emptyTestResponse: 'The model returned an empty response.',
       imagePromptLabel: 'Image prompt',
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
-      imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+      imagePromptDefault: 'Generate an SVG of a pelican riding a bicycle.',
       imageTestHint:
         'Calls standalone /v1/images/generations and shows the returned image below.',
       imageTestMode: 'Mode: Image generation test',

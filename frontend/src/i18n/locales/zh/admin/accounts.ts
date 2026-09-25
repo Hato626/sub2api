@@ -1678,7 +1678,7 @@ export default {
       emptyTestResponse: '模型返回了空内容。',
       imagePromptLabel: '生图提示词',
       imagePromptPlaceholder: '例如：生成一只戴宇航员头盔的橘猫，像素插画风格，纯色背景。',
-      imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+      imagePromptDefault: 'Generate an SVG of a pelican riding a bicycle.',
       imageTestHint:
         '调用独立 /v1/images/generations 生图，并在下方预览返回图片。',
       imageTestMode: '模式：生图测试',
