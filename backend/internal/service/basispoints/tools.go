@@ -291,6 +291,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			return nil, fmt.Errorf("invalid Basispoints input item")
 		}
 		delete(item, "internal_chat_message_metadata_passthrough")
+		normalizeBPSMessageID(item, b.scope)
 		switch text(item["type"]) {
 		case "additional_tools":
 			continue
@@ -353,6 +354,17 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		result = append(result, trigger)
 	}
 	return result, nil
+}
+
+func normalizeBPSMessageID(item object, scope string) {
+	if text(item["type"]) != "message" {
+		return
+	}
+	id := text(item["id"])
+	if id == "" || strings.HasPrefix(id, "msg_") {
+		return
+	}
+	item["id"] = "msg_" + fingerprint(object{"scope": scope, "id": id})
 }
 
 func validateHistoryContent(value any, localImageBase ...string) error {

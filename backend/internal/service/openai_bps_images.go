@@ -42,63 +42,56 @@ func (s *OpenAIGatewayService) materializeBPSInlineImages(c *gin.Context, body [
 		detail    string
 	}
 	images := make([]pendingImage, 0)
-	input, _ := request["input"].([]any)
-	for _, rawItem := range input {
-		item, _ := rawItem.(map[string]any)
-		kind, _ := item["type"].(string)
-		var content any
-		switch kind {
-		case "", "message":
-			content = item["content"]
-		case "function_call_output", "custom_tool_call_output":
-			content = item["output"]
-		default:
-			continue
-		}
-		parts, _ := content.([]any)
-		for _, rawPart := range parts {
-			part, _ := rawPart.(map[string]any)
-			typ, _ := part["type"].(string)
-			entry := pendingImage{part: part}
-			switch typ {
+	var collect func(any)
+	collect = func(node any) {
+		switch value := node.(type) {
+		case []any:
+			for _, child := range value {
+				collect(child)
+			}
+		case map[string]any:
+			typ, _ := value["type"].(string)
+			entry := pendingImage{part: value}
+			switch strings.ToLower(strings.TrimSpace(typ)) {
 			case "input_image", "image_url":
-				entry.raw, _ = part["image_url"].(string)
-				if obj, ok := part["image_url"].(map[string]any); ok {
-					entry.raw, _ = obj["url"].(string)
-					entry.detail, _ = obj["detail"].(string)
-					entry.normalize = true
+				if raw, ok := value["image_url"].(string); ok {
+					entry.raw = raw
 				}
-				if typ == "image_url" {
-					entry.normalize = true
+				if object, ok := value["image_url"].(map[string]any); ok {
+					entry.raw, _ = object["url"].(string)
+					entry.detail, _ = object["detail"].(string)
 				}
+				entry.normalize = true
 			case "image":
-				source, _ := part["source"].(map[string]any)
-				switch source["type"] {
-				case "base64":
-					mime, _ := source["media_type"].(string)
-					data, _ := source["data"].(string)
-					entry.raw = "data:" + mime + ";base64," + data
-				case "url":
-					entry.raw, _ = source["url"].(string)
+				if source, ok := value["source"].(map[string]any); ok {
+					sourceType, _ := source["type"].(string)
+					if sourceType == "base64" {
+						mime, _ := source["media_type"].(string)
+						data, _ := source["data"].(string)
+						entry.raw = "data:" + mime + ";base64," + data
+					} else if sourceType == "url" {
+						entry.raw, _ = source["url"].(string)
+					}
 				}
-				// MCP image tool results carry data/mimeType directly.
-				if source == nil {
-					mime, _ := part["mimeType"].(string)
-					data, _ := part["data"].(string)
+				if entry.raw == "" {
+					mime, _ := value["mimeType"].(string)
+					data, _ := value["data"].(string)
 					if mime != "" && data != "" {
 						entry.raw = "data:" + mime + ";base64," + data
 					}
 				}
 				entry.normalize = true
-			default:
-				continue
 			}
 			entry.raw = strings.TrimSpace(entry.raw)
-			if strings.HasPrefix(strings.ToLower(entry.raw), "data:") || (entry.normalize && entry.raw != "") {
+			if entry.raw != "" && (strings.HasPrefix(strings.ToLower(entry.raw), "data:") || entry.normalize) {
 				images = append(images, entry)
+			}
+			for _, child := range value {
+				collect(child)
 			}
 		}
 	}
+	collect(request)
 	if len(images) == 0 {
 		return body, nil
 	} // Text-only BPS requires no image-host config.
