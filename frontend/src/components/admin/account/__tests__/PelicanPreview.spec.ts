@@ -125,15 +125,18 @@ describe('Pelican rendering', () => {
     const wrapper = mount(BatchAccountTestModal, {
       props: { show: true, accountIds: [41, 42] }, global: { stubs }
     })
-    await wrapper.get('select').setValue('pelican')
+    await flushPromises()
+    await wrapper.findAll('select')[0].setValue('pelican')
+    await wrapper.findAll('select')[1].setValue('gpt-5.4')
     await wrapper.findAll('button').find(button => button.text().includes('bulkTest.start'))!.trigger('click')
     await flushPromises()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [, request] of fetchMock.mock.calls) expect(JSON.parse(request.body).model_id).toBe('gpt-5.4')
     expect(wrapper.findAll('iframe')).toHaveLength(2)
     for (const frame of wrapper.findAll('iframe')) expect(frame.attributes('srcdoc')).toContain('id="wheel"')
     for (const pre of wrapper.findAll('pre')) expect(pre.text()).toBe(longOutput)
     // Selecting a mode for the next run must not reinterpret the previous output.
-    await wrapper.get('select').setValue('standard')
+    await wrapper.findAll('select')[0].setValue('standard')
     expect(wrapper.findAll('iframe')).toHaveLength(2)
     wrapper.unmount()
   })

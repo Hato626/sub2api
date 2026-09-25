@@ -550,10 +550,12 @@ export default {
       bulkTest: {
         title: 'Batch Account Test',
         modeLabel: 'Test mode',
+        modelLabel: 'Test model',
+        defaultModel: 'Use each account default model',
         standardHint: 'Runs the normal connection test using each account’s default model.',
         pelicanHint: 'Runs the HTML/SVG prompt once per account and keeps the first complete output.',
         attributionHint: 'Runs three number challenges per account and calculates attribution locally.',
-        parallelHint: 'Runs up to 4 accounts in parallel. Requests use each account’s default test model.',
+        parallelHint: 'Runs up to 4 accounts in parallel. Choose one model for all requests or use each account default.',
         progress: '{completed}/{total} completed',
         start: 'Start Batch Test',
         retry: 'Run Again',

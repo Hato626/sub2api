@@ -15,6 +15,19 @@
               <option value="attribution">{{ t('admin.accounts.diagnosticTestModeAttribution') }}</option>
             </select>
           </label>
+          <label class="min-w-[220px] flex-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+            {{ t('admin.accounts.bulkTest.modelLabel') }}
+            <select
+              v-model="modelId"
+              :disabled="running || loadingModels"
+              class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-500 dark:bg-dark-800 dark:text-gray-100"
+            >
+              <option value="">{{ loadingModels ? t('common.loading') + '...' : t('admin.accounts.bulkTest.defaultModel') }}</option>
+              <option v-for="option in modelOptions" :key="option.id" :value="option.id">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
           <div class="flex-1 text-xs text-gray-500 dark:text-gray-400">
             {{ mode === 'attribution' ? t('admin.accounts.bulkTest.attributionHint') : mode === 'pelican' ? t('admin.accounts.bulkTest.pelicanHint') : t('admin.accounts.bulkTest.standardHint') }}
           </div>
@@ -145,6 +158,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const mode = ref<BatchMode>('standard')
+const modelId = ref('')
+const loadingModels = ref(false)
+const modelOptions = ref<Array<{ id: string; label: string }>>([])
 const rows = ref<TestRow[]>([])
 const running = ref(false)
 const errorMessage = ref('')
@@ -167,8 +183,34 @@ const createRows = () => {
 }
 
 watch(() => [props.show, props.accountIds] as const, ([show]) => {
-  if (show && !running.value) createRows()
+  if (show && !running.value) {
+    createRows()
+    void loadModelOptions()
+  }
 }, { immediate: true })
+
+async function loadModelOptions() {
+  modelId.value = ''
+  modelOptions.value = []
+  if (props.accountIds.length === 0) return
+  loadingModels.value = true
+  try {
+    const results = await Promise.allSettled(props.accountIds.map((id) => adminAPI.accounts.getAvailableModels(id)))
+    const models = new Map<string, string>()
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue
+      for (const model of result.value) {
+        if (!model.id || models.has(model.id)) continue
+        models.set(model.id, model.display_name || model.id)
+      }
+    }
+    modelOptions.value = [...models.entries()]
+      .sort((left, right) => left[1].localeCompare(right[1]))
+      .map(([id, label]) => ({ id, label: label === id ? id : `${label} (${id})` }))
+  } finally {
+    loadingModels.value = false
+  }
+}
 
 const statusClass = (status: RowStatus) => {
   if (status === 'success') return 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
@@ -183,7 +225,7 @@ const statusLabel = (status: RowStatus) => t(`admin.accounts.bulkTest.status.${s
 const parseSSE = async (accountID: number, prompt: string, platform: string): Promise<string> => {
   const controller = new AbortController()
   activeControllers.add(controller)
-  const body: { model_id: string; prompt: string; mode?: string } = { model_id: '', prompt }
+  const body: { model_id: string; prompt: string; mode?: string } = { model_id: modelId.value, prompt }
   if (platform === 'grok') body.mode = 'text'
   if (platform === 'openai') body.mode = 'default'
 

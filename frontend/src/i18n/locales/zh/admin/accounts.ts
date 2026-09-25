@@ -669,10 +669,12 @@ export default {
       bulkTest: {
         title: '批量测试账号',
         modeLabel: '测试模式',
+        modelLabel: '测试模型',
+        defaultModel: '使用每个账号的默认模型',
         standardHint: '使用每个账号的默认模型执行常规连接测试。',
         pelicanHint: '每个账号执行一次 HTML/SVG 提示词，并保留首次完整输出。',
         attributionHint: '每个账号执行 3 组数字挑战，并在本地计算归因结果。',
-        parallelHint: '最多同时测试 4 个账号；请求使用每个账号的默认测试模型。',
+        parallelHint: '最多同时测试 4 个账号；可统一选择模型，也可使用每个账号的默认模型。',
         progress: '已完成 {completed}/{total}',
         start: '开始批量测试',
         retry: '再次测试',
