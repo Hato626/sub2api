@@ -28,6 +28,24 @@ func testExcelBPSAccessToken(t *testing.T, accountID string) string {
 	return "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 }
 
+func TestShouldBypassExcelBPSForHostedTools(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "plain text", body: `{"model":"gpt-6-astra","input":"hello","tools":[{"type":"function","name":"apply_patch"}],"tool_choice":"auto"}`, want: false},
+		{name: "image generation declaration", body: `{"model":"gpt-6-astra","input":"draw","tools":[{"type":"image_generation"}],"tool_choice":"auto"}`, want: true},
+		{name: "explicit image generation choice", body: `{"model":"gpt-6-astra","input":"draw","tool_choice":"image_generation"}`, want: true},
+		{name: "namespace hosted tool", body: `{"model":"gpt-6-astra","tools":[{"type":"namespace","name":"hosted","tools":[{"type":"web_search"}]}]}`, want: true},
+		{name: "native image history", body: `{"model":"gpt-6-astra","input":[{"type":"image_generation_call","id":"ig_1"}]}`, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, shouldBypassExcelBPS([]byte(test.body)))
+		})
+	}
+}
+
 func TestExcelBPSAccountID(t *testing.T) {
 	account := &Account{
 		Platform:    PlatformOpenAI,

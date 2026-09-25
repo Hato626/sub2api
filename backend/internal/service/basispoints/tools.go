@@ -300,6 +300,22 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		case "compaction_trigger":
 			trigger = item
 			continue
+		case "agent_message":
+			// Codex multi-agent conversations use agent_message items whose
+			// payload is split between input_text (the envelope) and
+			// encrypted_content (the plain-text task body). Basispoints only
+			// accepts ordinary message content, so lower the item to a user
+			// message instead of letting the encrypted_content part hit the
+			// narrow BPS content validator.
+			messageItem, err := translateAgentMessage(item, b.httpImageBase)
+			if err != nil {
+				return nil, err
+			}
+			if messageItem == nil {
+				continue
+			}
+			item = messageItem
+			normalizeBPSMessageID(item, b.scope)
 		case "reasoning":
 			if encrypted := text(item["encrypted_content"]); encrypted != "" {
 				result = append(result, object{"type": "reasoning", "summary": []any{}, "encrypted_content": encrypted})
@@ -367,18 +383,111 @@ func normalizeBPSMessageID(item object, scope string) {
 	item["id"] = "msg_" + fingerprint(object{"scope": scope, "id": id})
 }
 
+// translateAgentMessage lowers Codex's multi-agent history item to a regular
+// user message. BPS does not understand agent_message or encrypted_content
+// content parts, even though Codex uses encrypted_content as a plain-text
+// transport for multi-agent task bodies.
+func translateAgentMessage(item object, localImageBase string) (object, error) {
+	content, ok := item["content"]
+	if !ok || content == nil {
+		return nil, nil
+	}
+	if raw, ok := content.(string); ok {
+		if strings.TrimSpace(raw) == "" {
+			return nil, nil
+		}
+		result := object{
+			"type":    "message",
+			"role":    "user",
+			"content": []any{object{"type": "input_text", "text": raw}},
+		}
+		copyOptionalItemID(result, item)
+		return result, nil
+	}
+	parts, ok := content.([]any)
+	if !ok {
+		return nil, fmt.Errorf("basispoints agent_message content must be text or an array")
+	}
+	translated := make([]any, 0, len(parts))
+	for index, rawPart := range parts {
+		part, ok := rawPart.(object)
+		if !ok {
+			return nil, fmt.Errorf("basispoints agent_message content[%d] has an invalid shape", index)
+		}
+		switch kind := text(part["type"]); kind {
+		case "input_text", "output_text", "text", "refusal", "summary_text":
+			value := text(part["text"])
+			if value == "" {
+				continue
+			}
+			translated = append(translated, object{"type": "input_text", "text": value})
+		case "encrypted_content":
+			value := text(part["encrypted_content"])
+			if value == "" {
+				continue
+			}
+			translated = append(translated, object{"type": "input_text", "text": value})
+		case "input_image":
+			if err := validateImage(part, localImageBase); err != nil {
+				return nil, fmt.Errorf("basispoints agent_message content[%d]: %w", index, err)
+			}
+			translated = append(translated, part)
+		default:
+			return nil, fmt.Errorf("basispoints agent_message content[%d] type %q is unsupported; only text and HTTPS input_image are supported", index, kind)
+		}
+	}
+	if len(translated) == 0 {
+		return nil, nil
+	}
+	result := object{
+		"type":    "message",
+		"role":    "user",
+		"content": translated,
+	}
+	copyOptionalItemID(result, item)
+	return result, nil
+}
+
+func copyOptionalItemID(dst, src object) {
+	if id, ok := src["id"]; ok && id != nil {
+		dst["id"] = id
+	}
+}
+
+func historyContentText(part object, kind string) string {
+	value := text(part["text"])
+	if value == "" && kind == "refusal" {
+		value = text(part["refusal"])
+	}
+	return value
+}
+
 func validateHistoryContent(value any, localImageBase ...string) error {
 	content, _ := value.([]any)
-	for _, rawPart := range content {
-		part, _ := rawPart.(object)
-		switch text(part["type"]) {
-		case "input_text", "output_text", "text", "refusal":
+	for index, rawPart := range content {
+		part, ok := rawPart.(object)
+		if !ok {
+			return fmt.Errorf("basispoints content[%d] has an invalid shape; only text and HTTPS input_image are supported", index)
+		}
+		switch kind := text(part["type"]); kind {
+		case "input_text", "output_text", "text", "refusal", "summary_text":
+			// Normalize replayed textual variants to the canonical BPS text part.
+			// Encrypted reasoning remains opaque and is intentionally not treated
+			// as user-visible text here; multi-agent task bodies are handled only
+			// by translateAgentMessage.
+			value := historyContentText(part, kind)
+			if value == "" {
+				continue
+			}
+			part["type"] = "input_text"
+			part["text"] = value
+			delete(part, "refusal")
 		case "input_image":
 			if err := validateImage(part, localImageBase...); err != nil {
 				return err
 			}
 		default:
-			return fmt.Errorf("basispoints supports text and HTTPS input_image content only")
+			return fmt.Errorf("basispoints content[%d] type %q is unsupported; only text and HTTPS input_image are supported", index, kind)
 		}
 	}
 	return nil
@@ -431,6 +540,15 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	return result, nil
 }
 
+func qualifiedNativeToolName(native object) string {
+	name := strings.TrimSpace(text(native["name"]))
+	namespace := strings.TrimSpace(text(native["namespace"]))
+	if namespace != "" && name != "" && name != namespace && !strings.HasPrefix(name, namespace+".") {
+		return namespace + "." + name
+	}
+	return name
+}
+
 // translateDirectCatalogCall recovers a native tool call the model addressed by the
 // client tool's own name instead of through the run_officejs transport. Some turns
 // skip the wrapper and call the catalog tool directly; the reference plugins accept
@@ -440,14 +558,18 @@ func (b *Bridge) translateCall(native object) (object, error) {
 // native tool remains an unsupported-native-tool error.
 func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 	name := text(native["name"])
-	info, ok := b.tools[name]
+	qualified := qualifiedNativeToolName(native)
+	info, ok := b.tools[qualified]
 	if !ok {
-		if trimmed := strings.TrimPrefix(name, "functions."); trimmed != name {
+		info, ok = b.tools[name]
+	}
+	if !ok {
+		if trimmed := strings.TrimPrefix(qualified, "functions."); trimmed != qualified {
 			info, ok = b.tools[trimmed]
 		}
 	}
 	if !ok {
-		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
+		return nil, fmt.Errorf("basispoints returned an unsupported native tool %q (type %q); no tool was executed", qualified, text(native["type"]))
 	}
 	kind := text(native["type"])
 	var envelope object
@@ -467,7 +589,7 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 		}
 		envelope = object{"name": info.Name, "input": input}
 	default:
-		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
+		return nil, fmt.Errorf("basispoints returned an unsupported native tool %q (type %q); no tool was executed", qualifiedNativeToolName(native), kind)
 	}
 	result, err := b.finishClientToolCall(native, info, envelope, false)
 	if err != nil {

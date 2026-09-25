@@ -21,6 +21,93 @@ import (
 
 var excelBPSReplay basispoints.ReplayCache
 
+// BPS is a text/client-tool transport. Hosted Responses tools such as image
+// generation and web search must stay on the normal OpenAI transport, where
+// the client/provider can execute them. Sending these requests to BPS makes
+// the model emit an unsupported native tool and terminates the stream.
+func shouldBypassExcelBPS(body []byte) bool {
+	var request map[string]any
+	if err := json.Unmarshal(body, &request); err != nil {
+		return true
+	}
+	if choice, exists := request["tool_choice"]; exists && choice != nil {
+		switch value := choice.(type) {
+		case string:
+			if value != "" && value != "auto" && value != "none" {
+				return true
+			}
+		case map[string]any:
+			typ, _ := value["type"].(string)
+			if typ != "" && typ != "auto" && typ != "none" {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	if containsUnsupportedBPSHostedTool(request["tools"]) || containsUnsupportedBPSHistoryTool(request["input"]) {
+		return true
+	}
+	return false
+}
+
+func containsUnsupportedBPSHostedTool(value any) bool {
+	items, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ, _ := item["type"].(string)
+		switch typ {
+		case "web_search", "web_search_preview", "web_search_preview_2025_03_11", "web_search_2025_08_26",
+			"tool_search", "image_generation", "file_search", "code_interpreter", "computer", "computer_use_preview", "mcp":
+			return true
+		case "namespace":
+			if containsUnsupportedBPSHostedTool(item["tools"]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsUnsupportedBPSHistoryTool(value any) bool {
+	var scan func(any) bool
+	scan = func(node any) bool {
+		switch value := node.(type) {
+		case []any:
+			for _, child := range value {
+				if scan(child) {
+					return true
+				}
+			}
+		case map[string]any:
+			typ, _ := value["type"].(string)
+			switch typ {
+			case "web_search_call", "image_generation_call", "file_search_call", "code_interpreter_call", "computer_call", "mcp_call":
+				return true
+			case "function_call", "custom_tool_call":
+				name, _ := value["name"].(string)
+				switch name {
+				case "web_search", "web_search_preview", "image_generation", "file_search", "code_interpreter", "computer", "mcp":
+					return true
+				}
+			}
+			for _, child := range value {
+				if scan(child) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return scan(value)
+}
+
 func excelBPSAccountID(account *Account, accessToken string) string {
 	if accountID := strings.TrimSpace(account.GetChatGPTAccountID()); accountID != "" {
 		return accountID

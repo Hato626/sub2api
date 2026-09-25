@@ -159,6 +159,88 @@ func TestNestedNamespaceAndConflictingCatalogDefinitions(t *testing.T) {
 	}
 }
 
+func TestAgentMessageHistoryIsLoweredToBPSMessage(t *testing.T) {
+	source := testSource()
+	source["input"] = []any{
+		object{
+			"type":      "agent_message",
+			"id":        "amsg_parent_to_child",
+			"author":    "/root",
+			"recipient": "/root/worker",
+			"content": []any{
+				object{"type": "input_text", "text": "NEW_TASK"},
+				object{"type": "encrypted_content", "encrypted_content": "Inspect the image"},
+			},
+		},
+	}
+	body, _ := mustPrepare(t, source, "scope", nil)
+	items := mustTestValue[[]any](t, body["input"])
+	messageItem := mustTestValue[object](t, items[len(items)-1])
+	if messageItem["type"] != "message" || messageItem["role"] != "user" || !strings.HasPrefix(text(messageItem["id"]), "msg_") {
+		t.Fatalf("agent_message was not lowered: %+v", messageItem)
+	}
+	content := mustTestValue[[]any](t, messageItem["content"])
+	if len(content) != 2 || mustTestValue[object](t, content[0])["type"] != "input_text" || mustTestValue[object](t, content[1])["text"] != "Inspect the image" {
+		t.Fatalf("agent_message content was not normalized: %+v", content)
+	}
+}
+
+func TestAgentMessageImageContentRemainsHTTPS(t *testing.T) {
+	source := testSource()
+	source["input"] = []any{object{
+		"type":    "agent_message",
+		"content": []any{object{"type": "input_image", "image_url": "https://example.com/worker.png"}},
+	}}
+	body, _ := mustPrepare(t, source, "scope", nil)
+	items := mustTestValue[[]any](t, body["input"])
+	messageItem := mustTestValue[object](t, items[len(items)-1])
+	content := mustTestValue[[]any](t, messageItem["content"])
+	image := mustTestValue[object](t, content[0])
+	if image["type"] != "input_image" || image["image_url"] != "https://example.com/worker.png" {
+		t.Fatalf("agent_message image changed unexpectedly: %+v", image)
+	}
+}
+
+func TestHistoryTextVariantsAreNormalizedForBasispoints(t *testing.T) {
+	source := testSource()
+	source["input"] = []any{object{
+		"type": "message",
+		"role": "assistant",
+		"content": []any{
+			object{"type": "output_text", "text": "answer"},
+			object{"type": "summary_text", "text": "summary"},
+			object{"type": "refusal", "refusal": "declined"},
+		},
+	}}
+	body, _ := mustPrepare(t, source, "scope", nil)
+	items := mustTestValue[[]any](t, body["input"])
+	messageItem := mustTestValue[object](t, items[len(items)-1])
+	content := mustTestValue[[]any](t, messageItem["content"])
+	if len(content) != 3 {
+		t.Fatalf("unexpected normalized content: %+v", content)
+	}
+	want := []string{"answer", "summary", "declined"}
+	for index, raw := range content {
+		part := mustTestValue[object](t, raw)
+		if part["type"] != "input_text" || part["text"] != want[index] {
+			t.Fatalf("text variant was not normalized: %+v", raw)
+		}
+	}
+}
+
+func TestHistoryEncryptedContentIsNotTreatedAsPlaintext(t *testing.T) {
+	source := testSource()
+	source["input"] = []any{object{
+		"type":    "message",
+		"role":    "assistant",
+		"content": []any{object{"type": "encrypted_content", "encrypted_content": "opaque"}},
+	}}
+	raw, _ := json.Marshal(source)
+	if _, _, err := Prepare(raw, "scope", nil); err == nil || !strings.Contains(err.Error(), "encrypted_content") {
+		t.Fatalf("opaque encrypted content should not be exposed as plaintext: %v", err)
+	}
+}
+
 func TestToolOutputHTTPSImagesRemainIntact(t *testing.T) {
 	source := testSource()
 	image := object{"type": "input_image", "image_url": "https://example.com/screenshot.png?signature=unchanged%2F"}

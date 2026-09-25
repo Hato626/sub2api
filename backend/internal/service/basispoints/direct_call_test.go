@@ -33,6 +33,20 @@ func TestDirectFunctionCallRecoveredIntoClientTool(t *testing.T) {
 	}
 }
 
+func TestDirectFunctionCallWithSeparateNamespaceRecovered(t *testing.T) {
+	source := testSource()
+	source["tools"] = []any{object{"type": "namespace", "name": "functions", "tools": []any{object{"type": "function", "name": "exec"}}}}
+	_, bridge := mustPrepare(t, source, "scope", nil)
+	native := object{"type": "function_call", "id": "fc_exec", "call_id": "call_exec", "namespace": "functions", "name": "exec", "arguments": `{"command":["pwd"]}`}
+	call, err := bridge.translateCall(native)
+	if err != nil {
+		t.Fatalf("namespaced direct call not recovered: %v", err)
+	}
+	if call["type"] != "function_call" || call["name"] != "exec" || call["namespace"] != "functions" || call["call_id"] != "call_exec" {
+		t.Fatalf("wrong namespaced client tool item: %+v", call)
+	}
+}
+
 // A direct custom tool call is relayed as custom_tool_call with its exact input.
 func TestDirectCustomCallRecoveredIntoClientTool(t *testing.T) {
 	cache := new(ReplayCache)

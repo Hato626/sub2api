@@ -91,8 +91,23 @@ func (s *OpenAIGatewayService) materializeBPSInlineImages(c *gin.Context, body [
 			}
 		}
 	}
-	collect(request)
+	// Only request input/history and its structured tool outputs are eligible.
+	// Do not walk the top-level tool declarations: a JSON schema may contain
+	// example input_image-shaped objects that must remain byte-for-byte intact.
+	collect(request["input"])
 	if len(images) == 0 {
+		return body, nil
+	}
+	needsDataURL := false
+	for _, image := range images {
+		if strings.HasPrefix(strings.ToLower(image.raw), "data:") {
+			needsDataURL = true
+			break
+		}
+	}
+	if !needsDataURL {
+		// Preserve the original bytes for HTTPS-only requests; besides avoiding
+		// needless work this keeps prompt cache keys and numeric JSON intact.
 		return body, nil
 	} // Text-only BPS requires no image-host config.
 	if len(images) > 256 {
