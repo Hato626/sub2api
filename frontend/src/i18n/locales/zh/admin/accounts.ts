@@ -1652,7 +1652,15 @@ export default {
       diagnosticTestModeStandard: '常规连接测试',
       diagnosticTestModePelican: '鹈鹕测试（HTML/SVG）',
       diagnosticTestModeAttribution: '归因测试（数字指纹）',
-      pelicanTestHint: '发送统一的白猫骑自行车 SVG/HTML 提示词，保留模型首次完整输出。',
+      pelicanTestHint: '发送统一的白猫骑自行车 SVG/HTML 提示词，渲染结果并保留完整源码。',
+      pelicanPreview: {
+        title: '鹈鹕测试预览',
+        expand: '放大预览',
+        collapse: '收起预览',
+        source: '查看源码',
+        copySource: '复制源码',
+        noMarkup: '本次回答没有可预览的 HTML 或 SVG，可展开查看源码。'
+      },
       attributionTestHint: '连续发送 3 组无语义数字挑战，并在本地按 ModelTrace 指纹库计算结果。',
       pelicanTestMode: '模式：鹈鹕测试',
       attributionTestMode: '模式：归因测试',

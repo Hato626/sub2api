@@ -1565,7 +1565,15 @@ export default {
       diagnosticTestModeStandard: 'Standard connection test',
       diagnosticTestModePelican: 'Pelican test (HTML/SVG)',
       diagnosticTestModeAttribution: 'Attribution test (number fingerprint)',
-      pelicanTestHint: 'Sends the standard white-cat-on-a-bicycle SVG/HTML prompt and keeps the first complete output.',
+      pelicanTestHint: 'Sends the standard white-cat-on-a-bicycle SVG/HTML prompt, renders the result, and keeps the complete source.',
+      pelicanPreview: {
+        title: 'Pelican test preview',
+        expand: 'Expand preview',
+        collapse: 'Collapse preview',
+        source: 'View source',
+        copySource: 'Copy source',
+        noMarkup: 'No HTML or SVG was found in this response. You can inspect the source below.'
+      },
       attributionTestHint: 'Sends 3 unrelated-number challenges and calculates the ModelTrace result locally.',
       pelicanTestMode: 'Mode: Pelican test',
       attributionTestMode: 'Mode: Attribution test',

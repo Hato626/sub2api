@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.testAccountConnection')"
-    width="normal"
+    :width="diagnosticMode === 'pelican' ? 'wide' : 'normal'"
     @close="handleClose"
   >
     <div class="space-y-4">
@@ -183,6 +183,8 @@
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.grok.audioUploadHint') }}</p>
       </div>
+
+      <PelicanPreview v-if="pelicanOutput" :source="pelicanOutput" />
 
       <!-- Terminal Output -->
       <div class="group relative">
@@ -408,6 +410,7 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import PelicanPreview from './PelicanPreview.vue'
 import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
@@ -462,6 +465,7 @@ const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
 const testMode = ref<'default' | 'compact'>('default')
 const diagnosticMode = ref<'standard' | 'pelican' | 'attribution'>('standard')
+const pelicanOutput = ref('')
 const attributionResult = ref<ModelTraceResult | null>(null)
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
@@ -828,6 +832,7 @@ watch(grokTestMode, () => {
 })
 
 watch(diagnosticMode, () => {
+  pelicanOutput.value = ''
   attributionResult.value = null
   if (diagnosticMode.value === 'standard') return
   const options = modelOptionsForMode.value
@@ -867,6 +872,7 @@ const loadAvailableModels = async () => {
 }
 
 const resetState = () => {
+  pelicanOutput.value = ''
   status.value = 'idle'
   outputLines.value = []
   streamingContent.value = ''
@@ -996,7 +1002,8 @@ const startDiagnosticTest = async () => {
       const content = await runDiagnosticProbe(challenge.prompt, index + 1, prompts.length)
       if (!content.trim()) throw new Error(t('admin.accounts.emptyTestResponse'))
       outputs.push({ text: content, expectedCount: challenge.expectedCount })
-      addLine(content, 'text-green-300')
+      if (diagnosticMode.value === 'pelican') pelicanOutput.value = content
+      else addLine(content, 'text-green-300')
       addLine('', 'text-gray-300')
     }
 

@@ -50,7 +50,8 @@
           <div v-if="row.prediction" class="mt-2 pl-10 text-xs text-primary-700 dark:text-primary-300">
             {{ t('admin.accounts.bulkTest.prediction', { model: row.prediction, probability: row.probability }) }}
           </div>
-          <details v-if="row.output" class="mt-2 pl-10">
+          <PelicanPreview v-if="row.pelicanOutput" :source="row.pelicanOutput" compact class="mt-3" />
+          <details v-else-if="row.output" class="mt-2 pl-10">
             <summary class="cursor-pointer text-xs text-primary-600 dark:text-primary-400">{{ t('admin.accounts.bulkTest.viewOutput') }}</summary>
             <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-gray-900 p-2 text-xs text-gray-100">{{ row.output }}</pre>
           </details>
@@ -91,6 +92,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import PelicanPreview from './PelicanPreview.vue'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
@@ -117,6 +119,7 @@ interface TestRow {
   status: RowStatus
   message: string
   output: string
+  pelicanOutput: string
   prediction: string
   probability: string
 }
@@ -156,6 +159,7 @@ const createRows = () => {
     status: 'pending',
     message: '',
     output: '',
+    pelicanOutput: '',
     prediction: '',
     probability: ''
   }))
@@ -244,7 +248,8 @@ const runOne = async (row: TestRow) => {
     const output = await parseSSE(account.id, challenge.prompt, account.platform)
     if (!output.trim()) throw new Error(t('admin.accounts.bulkTest.emptyResponse'))
     outputs.push({ text: output, expectedCount: challenge.expectedCount })
-    row.output = output.slice(0, 5000)
+    if (mode.value === 'pelican') row.pelicanOutput = output
+    else row.output = output.slice(0, 5000)
   }
   if (mode.value === 'attribution') {
     const result: ModelTraceResult = analyzeModelTrace(outputs, await loadModelTraceBank())
@@ -262,6 +267,7 @@ const startRun = async () => {
     row.status = 'pending'
     row.message = ''
     row.output = ''
+    row.pelicanOutput = ''
     row.prediction = ''
     row.probability = ''
   })
