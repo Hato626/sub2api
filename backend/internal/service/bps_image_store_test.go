@@ -202,3 +202,55 @@ func TestBPSImagesPublicReadHeadAndCache(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest("GET", bpsImagePublicPath+"config.yaml", nil))
 	require.Equal(t, 404, rec.Code)
 }
+
+func TestBPSImagesForwardingOnlyForEnabledAccount(t *testing.T) {
+	_, raw := bpsTestPNG(t)
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			wire := `data: {"type":"response.completed","response":{"id":"resp_image","status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":10,"output_tokens":2}}}` + "\n\n"
+			up := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(wire))}}
+			s := openAIClientToolsTestService(up)
+			s.bpsImageStore = NewBPSImageStore(t.TempDir())
+			s.cfg.BPSImages.PublicBaseURL = "http://192.0.2.1:8080"
+			account := excelAccount()
+			account.Extra["openai_excel_bps"] = enabled
+			body := []byte(fmt.Sprintf(`{"model":"gpt-5.4","instructions":"Help","stream":true,"input":[{"role":"user","content":[{"type":"input_image","image_url":%q}]}]}`, raw))
+			_, err := s.Forward(context.Background(), bpsTestContext(), account, body)
+			require.NoError(t, err)
+			entries, err := os.ReadDir(s.bpsImageStore.root)
+			require.NoError(t, err)
+			if enabled {
+				require.Equal(t, "bps.openai.com", up.lastReq.URL.Host)
+				require.NotContains(t, string(up.lastBody), "data:image")
+				require.Contains(t, string(up.lastBody), "http://192.0.2.1:8080/api/v1/bps/images/")
+				require.Len(t, entries, 1)
+			} else {
+				require.Equal(t, "chatgpt.com", up.lastReq.URL.Host)
+				require.Contains(t, string(up.lastBody), raw)
+				require.Empty(t, entries)
+			}
+		})
+	}
+}
+
+func TestBPSImageStoreNeverReusesPartialFile(t *testing.T) {
+	store := NewBPSImageStore(t.TempDir())
+	_, raw := bpsTestPNG(t)
+	name, err := store.PutDataURL(raw)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(store.root, name), []byte("partial"), 0600))
+	_, err = store.PutDataURL(raw)
+	require.Error(t, err)
+}
+
+func TestBPSImagesMCPImageToolResult(t *testing.T) {
+	s := bpsTestGateway(t)
+	_, raw := bpsTestPNG(t)
+	body := []byte(fmt.Sprintf(`{"input":[{"type":"function_call_output","call_id":"a","output":[{"type":"image","mimeType":"image/png","data":%q}]}]}`, strings.SplitN(raw, ",", 2)[1]))
+	out, err := s.materializeBPSInlineImages(bpsTestContext(), body)
+	require.NoError(t, err)
+	require.Equal(t, "input_image", gjson.GetBytes(out, "input.0.output.0.type").String())
+	require.Contains(t, gjson.GetBytes(out, "input.0.output.0.image_url").String(), bpsImagePublicPath)
+	require.False(t, gjson.GetBytes(out, "input.0.output.0.data").Exists())
+	require.False(t, gjson.GetBytes(out, "input.0.output.0.mimeType").Exists())
+}

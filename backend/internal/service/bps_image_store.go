@@ -6,8 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -17,6 +15,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	_ "golang.org/x/image/webp"
 )
 
 const bpsImageMaxBytes = 32 << 20
@@ -24,6 +25,8 @@ const bpsImageMaxPixels = 100_000_000
 
 var bpsImageNamePattern = regexp.MustCompile("^[a-f0-9]{64}\\.(png|jpg|webp|gif)$")
 
+// BPSImageStore publishes immutable images by their decoded content hash.
+// It has no TTL, signed query string, directory listing or public upload API.
 type BPSImageStore struct{ root string }
 
 func NewBPSImageStore(root string) *BPSImageStore {
@@ -87,14 +90,31 @@ func (s *BPSImageStore) PutDataURL(raw string) (string, error) {
 	return s.put(data, ct)
 }
 func (s *BPSImageStore) put(data []byte, ct string) (string, error) {
+	if s == nil {
+		return "", errors.New("BPS image storage is unavailable")
+	}
 	name := fmt.Sprintf("%x", sha256.Sum256(data)) + bpsImageExtension(ct)
 	if err := os.MkdirAll(s.root, 0750); err != nil {
 		return "", err
 	}
 	target := filepath.Join(s.root, name)
-	if st, err := os.Stat(target); err == nil && st.Mode().IsRegular() && st.Size() == int64(len(data)) {
-		return name, nil
+	complete := func() error {
+		st, err := os.Lstat(target)
+		if err != nil {
+			return err
+		}
+		if !st.Mode().IsRegular() || st.Size() != int64(len(data)) {
+			return errors.New("BPS image storage contains an incomplete file")
+		}
+		return nil
 	}
+	if err := complete(); err == nil {
+		return name, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	// A temporary file followed by an atomic hard link publishes complete bytes
+	// once, including concurrent writers from separate processes.
 	tmp, err := os.CreateTemp(s.root, ".upload-*")
 	if err != nil {
 		return "", err
@@ -111,7 +131,7 @@ func (s *BPSImageStore) put(data []byte, ct string) (string, error) {
 		return "", err
 	}
 	if err = os.Link(n, target); err != nil {
-		if _, e := os.Stat(target); e != nil {
+		if !errors.Is(err, os.ErrExist) || complete() != nil {
 			return "", err
 		}
 	}

@@ -1255,3 +1255,12 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# BPS inline-image hosting (only used by accounts with Excel/BPS enabled).
+# No public upload endpoint, signature or expiration. Same decoded bytes reuse a file.
+bps_images:
+  # Public Sub2API base, including port. Must be reachable by the upstream.
+  # Example: http://203.0.113.10:8080. Never inferred from request Host headers.
+  public_base_url: ""
+  # Empty uses DATA_DIR/bps-images, otherwise ./data/bps-images.
+  data_dir: ""

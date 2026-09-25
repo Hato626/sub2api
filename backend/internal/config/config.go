@@ -116,8 +116,6 @@ type SimpleModeConfig struct {
 	AutoCreateDefaultGroups bool `mapstructure:"auto_create_default_groups" yaml:"auto_create_default_groups"`
 }
 
-// PluginConfig 控制管理员手动上传的本地进程插件。
-// 默认不包含插件，也不允许安装未签名插件；TrustedPublishers 用于追加第三方发布者。
 // BPSImageConfig controls the self-hosted, content-addressed image URL bridge.
 // It is used only by accounts explicitly opting into Excel/BPS.
 type BPSImageConfig struct {
@@ -125,6 +123,8 @@ type BPSImageConfig struct {
 	DataDir       string `mapstructure:"data_dir"`
 }
 
+// PluginConfig 控制管理员手动上传的本地进程插件。
+// 默认不包含插件，也不允许安装未签名插件；TrustedPublishers 用于追加第三方发布者。
 type PluginConfig struct {
 	DataDir              string            `mapstructure:"data_dir"`
 	AllowUnsigned        bool              `mapstructure:"allow_unsigned"`

@@ -81,6 +81,14 @@ func (s *OpenAIGatewayService) materializeBPSInlineImages(c *gin.Context, body [
 				case "url":
 					entry.raw, _ = source["url"].(string)
 				}
+				// MCP image tool results carry data/mimeType directly.
+				if source == nil {
+					mime, _ := part["mimeType"].(string)
+					data, _ := part["data"].(string)
+					if mime != "" && data != "" {
+						entry.raw = "data:" + mime + ";base64," + data
+					}
+				}
 				entry.normalize = true
 			default:
 				continue
@@ -146,7 +154,7 @@ func (s *OpenAIGatewayService) materializeBPSInlineImages(c *gin.Context, body [
 			if stored.name == "" {
 				name, err := s.bpsImageStore.put(stored.data, stored.mime)
 				if err != nil {
-					return nil, err
+					return nil, errors.New("BPS image storage write failed; check the server data directory")
 				}
 				stored.name = name
 			}
@@ -155,6 +163,8 @@ func (s *OpenAIGatewayService) materializeBPSInlineImages(c *gin.Context, body [
 		entry.part["type"] = "input_image"
 		entry.part["image_url"] = imageURL
 		delete(entry.part, "source")
+		delete(entry.part, "data")
+		delete(entry.part, "mimeType")
 		if entry.detail != "" {
 			if _, ok := entry.part["detail"]; !ok {
 				entry.part["detail"] = entry.detail

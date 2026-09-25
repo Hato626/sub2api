@@ -375,7 +375,7 @@ func NewOpenAIGatewayHandler(
 }
 
 // BPSImage serves content-addressed images referenced by BPS requests.
-// The URL contains no credentials or expiry token; access is controlled by an unguessable SHA256 path.
+// The URL contains no credentials or expiry token; anyone holding the full URL can read it.
 func (h *OpenAIGatewayHandler) BPSImage(c *gin.Context) {
 	if h == nil || h.gatewayService == nil {
 		c.Status(http.StatusNotFound)
