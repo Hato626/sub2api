@@ -24,6 +24,7 @@ type Bridge struct {
 	unsupportedTools map[string]bool
 	replay           *ReplayCache
 	scope            string
+	httpImageBase    string
 }
 
 func decode(raw []byte, target any) error {
@@ -71,7 +72,7 @@ func message(role, content string) object {
 }
 
 // Prepare preserves the requested model and uses a whitelist for the Excel wire body.
-func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, error) {
+func Prepare(raw []byte, scope string, replay *ReplayCache, localImageBase ...string) ([]byte, *Bridge, error) {
 	var source object
 	if err := decode(raw, &source); err != nil || source == nil {
 		return nil, nil, fmt.Errorf("invalid Basispoints request JSON")
@@ -95,6 +96,9 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 		return nil, nil, err
 	}
 	b := &Bridge{RequestedEffort: requested, Effort: effort, tools: make(map[string]tool), unsupportedTools: make(map[string]bool), replay: replay, scope: scope}
+	if len(localImageBase) > 0 {
+		b.httpImageBase = localImageBase[0]
+	}
 	choice := source["tool_choice"]
 	if choice != nil && text(choice) != "auto" && text(choice) != "none" {
 		return nil, nil, fmt.Errorf("basispoints supports tool_choice auto or none only")

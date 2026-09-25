@@ -29,6 +29,11 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
+	// Public, content-addressed image URLs used only after an account opts into BPS.
+	r.GET("/api/v1/bps/images/:name", h.OpenAIGateway.BPSImage)
+	r.GET("/v1/bps/images/:name", h.OpenAIGateway.BPSImage)
+	r.HEAD("/api/v1/bps/images/:name", h.OpenAIGateway.BPSImage)
+	r.HEAD("/v1/bps/images/:name", h.OpenAIGateway.BPSImage)
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()

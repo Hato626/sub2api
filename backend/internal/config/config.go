@@ -104,6 +104,7 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	BPSImages               BPSImageConfig                `mapstructure:"bps_images"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
 
 	// Enforce only API-key spending windows in simple mode.
@@ -117,6 +118,13 @@ type SimpleModeConfig struct {
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
 // 默认不包含插件，也不允许安装未签名插件；TrustedPublishers 用于追加第三方发布者。
+// BPSImageConfig controls the self-hosted, content-addressed image URL bridge.
+// It is used only by accounts explicitly opting into Excel/BPS.
+type BPSImageConfig struct {
+	PublicBaseURL string `mapstructure:"public_base_url"`
+	DataDir       string `mapstructure:"data_dir"`
+}
+
 type PluginConfig struct {
 	DataDir              string            `mapstructure:"data_dir"`
 	AllowUnsigned        bool              `mapstructure:"allow_unsigned"`
@@ -2244,6 +2252,8 @@ func setDefaults() {
 	viper.SetDefault("batch_image.vertex_gcs_base_url", "")
 
 	// Image storage (async image task result offload to S3-compatible object storage)
+	viper.SetDefault("bps_images.public_base_url", "")
+	viper.SetDefault("bps_images.data_dir", "")
 	viper.SetDefault("image_storage.enabled", false)
 	viper.SetDefault("image_storage.region", "auto")
 	viper.SetDefault("image_storage.prefix", "images/")

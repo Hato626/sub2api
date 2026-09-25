@@ -144,6 +144,24 @@ func buildLoginAgreementRevision(updatedAt string, docs []LoginAgreementDocument
 	return hex.EncodeToString(sum[:])[:16]
 }
 
+// GetAPIBaseURL returns an operator-configured URL, never a request header.
+func (s *SettingService) GetAPIBaseURL(ctx context.Context) string {
+	if s == nil {
+		return ""
+	}
+	if s.settingRepo != nil {
+		for _, key := range []string{SettingKeyAPIBaseURL, SettingKeyFrontendURL} {
+			if val, err := s.settingRepo.GetValue(ctx, key); err == nil && strings.TrimSpace(val) != "" {
+				return strings.TrimSpace(val)
+			}
+		}
+	}
+	if s.cfg != nil {
+		return strings.TrimSpace(s.cfg.Server.FrontendURL)
+	}
+	return ""
+}
+
 // GetFrontendURL 获取前端基础URL（数据库优先，fallback 到配置文件）
 func (s *SettingService) GetFrontendURL(ctx context.Context) string {
 	val, err := s.settingRepo.GetValue(ctx, SettingKeyFrontendURL)

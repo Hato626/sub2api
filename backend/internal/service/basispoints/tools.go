@@ -328,7 +328,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 				seenCalls[id] = true
 			}
 			item["type"] = "function_call_output"
-			if err := validateHistoryContent(item["output"]); err != nil {
+			if err := validateHistoryContent(item["output"], b.httpImageBase); err != nil {
 				return nil, err
 			}
 			// Codex custom results carry ctco_ IDs. After lowering to a function
@@ -344,7 +344,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		case "configuration_update":
 			return nil, fmt.Errorf("basispoints does not support configuration_update; start a new request with the desired effort")
 		}
-		if err := validateHistoryContent(item["content"]); err != nil {
+		if err := validateHistoryContent(item["content"], b.httpImageBase); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -355,14 +355,14 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 	return result, nil
 }
 
-func validateHistoryContent(value any) error {
+func validateHistoryContent(value any, localImageBase ...string) error {
 	content, _ := value.([]any)
 	for _, rawPart := range content {
 		part, _ := rawPart.(object)
 		switch text(part["type"]) {
 		case "input_text", "output_text", "text", "refusal":
 		case "input_image":
-			if err := validateImage(part); err != nil {
+			if err := validateImage(part, localImageBase...); err != nil {
 				return err
 			}
 		default:

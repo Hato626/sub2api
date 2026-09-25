@@ -62,10 +62,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		return nil, fmt.Errorf("excel BPS: %s", code)
 	}
+	materializedBody, err := s.materializeBPSInlineImages(c, body)
+	if err != nil {
+		return fail(http.StatusBadRequest, "basispoints_image_conversion_failed", err.Error())
+	}
+	body = materializedBody
 	originalModel := gjson.GetBytes(body, "model").String()
 	model := account.GetMappedModel(originalModel)
 	stream := gjson.GetBytes(body, "stream").Bool()
-	var err error
 	body, err = sjson.SetBytes(body, "model", model)
 	if err != nil {
 		return fail(400, "basispoints_request_invalid", "Invalid model request")
@@ -99,7 +103,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 	}
 	scope := fmt.Sprintf("account:%d/key:%d/thread:%s", account.ID, getAPIKeyIDFromContext(c), identity)
-	upstreamBody, bridge, err := basispoints.Prepare(body, scope, &excelBPSReplay)
+	imageBase, _ := s.bpsImagePublicBaseURL(c)
+	upstreamBody, bridge, err := basispoints.Prepare(body, scope, &excelBPSReplay, imageBase)
 	if err != nil {
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
