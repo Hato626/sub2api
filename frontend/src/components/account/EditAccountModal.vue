@@ -5694,6 +5694,11 @@ const handleSubmit = async () => {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
       }
+      if (props.account.type === 'oauth' && !isSparkShadow.value && excelBPSEnabled.value) {
+        newExtra.openai_excel_bps = true
+      } else {
+        delete newExtra.openai_excel_bps
+      }
       // 缺省即保留 namespace，不写空值，避免 extra 里堆积默认项
       if (props.account.type === 'oauth' && openaiFlattenNamespacesEnabled.value) {
         newExtra.openai_responses_flatten_namespaces = true
