@@ -2115,6 +2115,10 @@ func (a *Account) IsExcelBPSEnabled() bool {
 	if a == nil || a.Platform != PlatformOpenAI || a.Type != AccountTypeOAuth || a.IsShadow() || a.IsOpenAIAgentIdentity() || a.IsOpenAIPersonalAccessToken() {
 		return false
 	}
+	authMode := strings.ToLower(strings.TrimSpace(a.GetCredential("auth_mode")))
+	if strings.ReplaceAll(authMode, "_", "") == "agentidentity" {
+		return false
+	}
 	enabled, _ := a.Extra["openai_excel_bps"].(bool)
 	return enabled
 }
