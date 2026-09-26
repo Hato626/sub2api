@@ -58,6 +58,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	body = s.rewriteCodexTimezoneIfEnabled(ctx, account, body)
+
 	if account.IsExcelBPSEnabled() && !shouldBypassExcelBPS(body) {
 		return s.forwardExcelBPS(ctx, c, account, body, startTime)
 	}

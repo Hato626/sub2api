@@ -5770,6 +5770,43 @@
                 </p>
               </div>
 
+              <!-- Experimental Codex environment timezone rewrite -->
+              <div data-testid="codex-timezone-experiment" class="space-y-3 rounded-lg border border-amber-200 p-4 dark:border-amber-900">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.gatewayForwarding.codexTimezoneRewrite") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.codexTimezoneRewriteHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.codex_timezone_rewrite_enabled" />
+                </div>
+                <div v-if="form.codex_timezone_rewrite_enabled">
+                  <label for="codex-timezone-target" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.codexTimezoneRewriteTarget") }}
+                  </label>
+                  <input
+                    id="codex-timezone-target"
+                    v-model="form.codex_timezone_rewrite_target"
+                    list="codex-timezone-options"
+                    class="input max-w-sm font-mono text-sm"
+                    placeholder="Asia/Singapore"
+                    maxlength="128"
+                  />
+                  <datalist id="codex-timezone-options">
+                    <option value="Asia/Singapore" />
+                    <option value="Asia/Tokyo" />
+                    <option value="America/Los_Angeles" />
+                    <option value="America/New_York" />
+                    <option value="Europe/London" />
+                    <option value="Europe/Paris" />
+                    <option value="Australia/Sydney" />
+                  </datalist>
+                </div>
+              </div>
+
               <!-- OpenAI Codex UA -->
               <div>
                 <label
@@ -9982,6 +10019,8 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
+  codex_timezone_rewrite_enabled: false,
+  codex_timezone_rewrite_target: "Asia/Singapore",
   openai_codex_user_agent: "",
   openai_codex_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
@@ -11613,6 +11652,8 @@ async function saveSettings() {
         form.enable_client_dateline_normalization,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
+      codex_timezone_rewrite_enabled: form.codex_timezone_rewrite_enabled,
+      codex_timezone_rewrite_target: form.codex_timezone_rewrite_target.trim() || "Asia/Singapore",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
       openai_codex_client_version:

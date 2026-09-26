@@ -476,6 +476,8 @@ const baseSettingsResponse = {
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
+  codex_timezone_rewrite_enabled: false,
+  codex_timezone_rewrite_target: "Asia/Singapore",
   openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
@@ -1196,6 +1198,45 @@ describe("admin SettingsView payment visible method controls", () => {
         },
       },
     ]);
+  });
+
+  it("keeps the Codex timezone experiment off by default and saves explicit changes", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const card = wrapper.get('[data-testid="codex-timezone-experiment"]');
+    const toggle = card.getComponent(ToggleStub);
+    expect(toggle.props("modelValue")).toBe(false);
+    expect(card.find("#codex-timezone-target").exists()).toBe(false);
+    toggle.vm.$emit("update:modelValue", true);
+    await flushPromises();
+    await card.get("#codex-timezone-target").setValue("America/Los_Angeles");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      codex_timezone_rewrite_enabled: true,
+      codex_timezone_rewrite_target: "America/Los_Angeles",
+    }));
+  });
+
+  it("loads a saved Codex timezone experiment without resetting it", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      codex_timezone_rewrite_enabled: true,
+      codex_timezone_rewrite_target: "Europe/Paris",
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const card = wrapper.get('[data-testid="codex-timezone-experiment"]');
+    expect(card.getComponent(ToggleStub).props("modelValue")).toBe(true);
+    expect((card.get("#codex-timezone-target").element as HTMLInputElement).value).toBe("Europe/Paris");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      codex_timezone_rewrite_enabled: true,
+      codex_timezone_rewrite_target: "Europe/Paris",
+    }));
   });
 
   it("submits Antigravity user agent version gateway setting", async () => {

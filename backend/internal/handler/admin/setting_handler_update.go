@@ -254,6 +254,8 @@ type UpdateSettingsRequest struct {
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	CodexTimezoneRewriteEnabled            *bool   `json:"codex_timezone_rewrite_enabled"`
+	CodexTimezoneRewriteTarget             *string `json:"codex_timezone_rewrite_target"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
@@ -1439,6 +1441,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.CodexTimezoneRewriteTarget != nil {
+		normalized, err := service.NormalizeCodexTimezoneRewriteTarget(*req.CodexTimezoneRewriteTarget)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		req.CodexTimezoneRewriteTarget = &normalized
+	}
 	if req.OpenAICodexUserAgent != nil {
 		normalized := strings.TrimSpace(*req.OpenAICodexUserAgent)
 		req.OpenAICodexUserAgent = &normalized
@@ -1758,6 +1768,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AntigravityUserAgentVersion
 			}
 			return previousSettings.AntigravityUserAgentVersion
+		}(),
+		CodexTimezoneRewriteEnabled: func() bool {
+			if req.CodexTimezoneRewriteEnabled != nil {
+				return *req.CodexTimezoneRewriteEnabled
+			}
+			return previousSettings.CodexTimezoneRewriteEnabled
+		}(),
+		CodexTimezoneRewriteTarget: func() string {
+			if req.CodexTimezoneRewriteTarget != nil {
+				return *req.CodexTimezoneRewriteTarget
+			}
+			return previousSettings.CodexTimezoneRewriteTarget
 		}(),
 		OpenAICodexUserAgent: func() string {
 			if req.OpenAICodexUserAgent != nil {
@@ -2332,6 +2354,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RewriteMessageCacheControl:                             updatedSettings.RewriteMessageCacheControl,
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
+		CodexTimezoneRewriteEnabled:                            updatedSettings.CodexTimezoneRewriteEnabled,
+		CodexTimezoneRewriteTarget:                             updatedSettings.CodexTimezoneRewriteTarget,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,

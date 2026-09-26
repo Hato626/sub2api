@@ -242,6 +242,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
 		SettingKeyEnableClientDatelineNormalization:                  "true",
 		SettingKeyAntigravityUserAgentVersion:                        "",
+		SettingKeyCodexTimezoneRewriteEnabled:                        "false",
+		SettingKeyCodexTimezoneRewriteTarget:                         DefaultCodexTimezoneRewriteTarget,
 		SettingKeyOpenAICodexUserAgent:                               "",
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
@@ -885,6 +887,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableClientDatelineNormalization = true
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
+	result.CodexTimezoneRewriteEnabled = settings[SettingKeyCodexTimezoneRewriteEnabled] == "true"
+	result.CodexTimezoneRewriteTarget = strings.TrimSpace(settings[SettingKeyCodexTimezoneRewriteTarget])
+	if result.CodexTimezoneRewriteTarget == "" {
+		result.CodexTimezoneRewriteTarget = DefaultCodexTimezoneRewriteTarget
+	}
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAICodexClientVersion = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersion])
 	result.OpenAICodexClientVersionSynced = NormalizeCodexClientVersion(settings[SettingKeyOpenAICodexClientVersionSynced])
