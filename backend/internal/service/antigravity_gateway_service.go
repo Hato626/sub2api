@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -469,7 +468,7 @@ func testConnectionHandleError(
 }
 
 // buildGeminiTestRequestWithPrompt 构建 Gemini 格式测试请求
-// 文本模型使用最小 token 消耗：输入 "." + maxOutputTokens: 1；图片模型使用图片生成配置
+// Text tests preserve the administrator's prompt; image models use image generation settings.
 func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, model, prompt string) ([]byte, error) {
 	if isImageGenerationModel(model) {
 		imagePrompt := strings.TrimSpace(prompt)
@@ -501,18 +500,12 @@ func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, 
 		return s.wrapV1InternalRequest(projectID, model, payloadBytes)
 	}
 
-	testPrompt := "."
-	maxOutputTokens := 1
-	if strings.TrimSpace(prompt) != "" {
-		testPrompt = strings.TrimSpace(prompt)
-		maxOutputTokens = 2048
-	}
 	payload := map[string]any{
 		"contents": []map[string]any{
 			{
 				"role": "user",
 				"parts": []map[string]any{
-					{"text": testPrompt},
+					{"text": antigravityTestPrompt(prompt)},
 				},
 			},
 		},
@@ -523,7 +516,7 @@ func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, 
 			},
 		},
 		"generationConfig": map[string]any{
-			"maxOutputTokens": maxOutputTokens,
+			"maxOutputTokens": antigravityTestMaxOutputTokens,
 		},
 		"toolConfig": map[string]any{
 			"functionCallingConfig": map[string]any{
@@ -535,24 +528,22 @@ func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, 
 	return s.wrapV1InternalRequest(projectID, model, payloadBytes)
 }
 
-// buildClaudeTestRequest 构建 Claude 格式测试请求并转换为 Gemini 格式。
-// 常规连接测试使用最小 token 消耗；专项测试使用调用方提供的提示词和完整输出预算。
-func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel string, prompts ...string) ([]byte, error) {
-	testPrompt := "."
-	maxTokens := 1
-	if len(prompts) > 0 && strings.TrimSpace(prompts[0]) != "" {
-		testPrompt = strings.TrimSpace(prompts[0])
-		maxTokens = 2048
+// buildClaudeTestRequest 构建 Claude 格式测试请求并转换为 Gemini 格式
+// 与其他平台一致：发送管理员输入的提示词（默认 "hi"），留出足够的输出 token 以便模型回答。
+func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel, prompt string) ([]byte, error) {
+	content, err := json.Marshal(antigravityTestPrompt(prompt))
+	if err != nil {
+		return nil, err
 	}
 	claudeReq := &antigravity.ClaudeRequest{
 		Model: mappedModel,
 		Messages: []antigravity.ClaudeMessage{
 			{
 				Role:    "user",
-				Content: json.RawMessage(strconv.Quote(testPrompt)),
+				Content: json.RawMessage(content),
 			},
 		},
-		MaxTokens: maxTokens,
+		MaxTokens: antigravityTestMaxOutputTokens,
 		Stream:    false,
 	}
 	return antigravity.TransformClaudeToGemini(claudeReq, projectID, mappedModel)
@@ -566,6 +557,18 @@ func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Contex
 	opts.EnableIdentityPatch = s.settingService.IsIdentityPatchEnabled(ctx)
 	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
 	return opts
+}
+
+// antigravityTestMaxOutputTokens leaves a thinking model room to think and still answer a short
+// test prompt. It was 1, so gemini-4-argon / gemini-3.8-flash returned no text at all.
+const antigravityTestMaxOutputTokens = 2048
+
+// antigravityTestPrompt is the admin's test prompt, or "hi" like the other platforms' tests.
+func antigravityTestPrompt(prompt string) string {
+	if trimmed := strings.TrimSpace(prompt); trimmed != "" {
+		return trimmed
+	}
+	return defaultGeminiTextTestPrompt
 }
 
 // extractContentFromSSEResponse 从 SSE 流式响应中提取文本和内联图片
@@ -654,20 +657,32 @@ func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("解析 Gemini 请求失败: %w", err)
 	}
 
+	identityFound := false
+	systemChanged := false
 	// 检查现有 systemInstruction 是否已包含身份提示词
 	if sysInst, ok := request["systemInstruction"].(map[string]any); ok {
 		if parts, ok := sysInst["parts"].([]any); ok {
 			for _, part := range parts {
 				if partMap, ok := part.(map[string]any); ok {
 					if text, ok := partMap["text"].(string); ok {
-						if strings.Contains(text, "You are Antigravity") {
-							// 已包含身份提示词，直接返回原始请求
-							return body, nil
+						neutral := antigravity.NeutralizeSystemIdentity(text)
+						if neutral != text {
+							partMap["text"] = neutral
+							systemChanged = true
+						}
+						if strings.Contains(neutral, "You are Antigravity") {
+							identityFound = true
 						}
 					}
 				}
 			}
 		}
+	}
+	if identityFound {
+		if systemChanged {
+			return json.Marshal(request)
+		}
+		return body, nil
 	}
 
 	// 获取默认身份提示词
